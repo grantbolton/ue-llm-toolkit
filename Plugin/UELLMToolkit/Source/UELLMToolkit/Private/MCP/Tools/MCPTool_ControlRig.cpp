@@ -2,7 +2,11 @@
 
 #include "MCPTool_ControlRig.h"
 #include "ControlRigEditor.h"
+# if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7  // UE5.7+ IMPLEMENTATION ONLY
 #include "ControlRigBlueprintLegacy.h"
+# else
+#include "ControlRigBlueprint.h"
+# endif
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMController.h"
 #include "MCP/MCPParamValidator.h"

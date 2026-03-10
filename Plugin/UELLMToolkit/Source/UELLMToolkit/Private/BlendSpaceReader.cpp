@@ -169,11 +169,15 @@ TSharedPtr<FJsonObject> FBlendSpaceReader::InspectBlendSpace(const FString& Asse
 		SampleObj->SetObjectField(TEXT("position"), PosObj);
 
 		SampleObj->SetNumberField(TEXT("rate_scale"), Sample.RateScale);
-		SampleObj->SetBoolField(TEXT("single_frame"), Sample.bUseSingleFrameForBlending);
-		if (Sample.bUseSingleFrameForBlending)
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7 
+		SampleObj->SetBoolField(TEXT("single_frame"), Sample.bUseSingleFrameForBlending);  // Single Frame Blending is a new feature with UE5.7 and bool Sample.bUseSingleFrameForBlending does not exist
+		if (Sample.bUseSingleFrameForBlending && IsValid(Sample.Animation))  // Wrapped in additional IsValid to ensure our animation exists
 		{
-			SampleObj->SetNumberField(TEXT("frame_index"), (double)Sample.FrameIndexToSample);
+			SampleObj->SetNumberField(TEXT("frame_index"), (double)Sample.FrameIndexToSample);  // ENGINE_VERSION < 5.7 has no context or reason for FrameIndexToSample as there is no single fram blending.
 		}
+#elif ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 6
+		SampleObj->SetBoolField(TEXT("single_frame"), false);  // UE5.6 does not support single frame blending, therefore always false
+#endif
 
 		SamplesArray.Add(MakeShared<FJsonValueObject>(SampleObj));
 	}

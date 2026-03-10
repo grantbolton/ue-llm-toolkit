@@ -836,7 +836,9 @@ TSharedPtr<FJsonObject> FRetargetEditor::InspectRetargeter(const FString& Retarg
 						case EFKChainRotationMode::OneToOneReversed: FKJson->SetStringField(TEXT("rotation"), TEXT("OneToOneReversed")); break;
 						case EFKChainRotationMode::MatchChain: FKJson->SetStringField(TEXT("rotation"), TEXT("MatchChain")); break;
 						case EFKChainRotationMode::MatchScaledChain: FKJson->SetStringField(TEXT("rotation"), TEXT("MatchScaledChain")); break;
-						case EFKChainRotationMode::CopyLocal: FKJson->SetStringField(TEXT("rotation"), TEXT("CopyLocal")); break;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7  // Don't need an elseif because case EFKChainRotationMode::CopyLocal will just never appear in ENGINE_VERSION < 5.7
+						case EFKChainRotationMode::CopyLocal: FKJson->SetStringField(TEXT("rotation"), TEXT("CopyLocal")); break;  // CopyLocal is not part of enum ENGINE_VERSION < 5.7
+#endif
 						default: FKJson->SetStringField(TEXT("rotation"), TEXT("Other")); break;
 						}
 
@@ -848,7 +850,11 @@ TSharedPtr<FJsonObject> FRetargetEditor::InspectRetargeter(const FString& Retarg
 					OpJson->SetArrayField(TEXT("fk_chains"), FKArray);
 
 					// Chain mapping
-					const FRetargetChainMapping& Mapping = FKSettings->ChainMapping;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7  // UE5.7 version
+					const FRetargetChainMapping& Mapping = FKSettings->ChainMapping;  
+#elif ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 6  // Need to get ChainMapping from the retargeter function GetChainMapping() instead
+					const FRetargetChainMapping& Mapping = Retargeter->GetChainMapping();
+#endif
 					const TArray<FRetargetChainPair>& Pairs = Mapping.GetChainPairs();
 					TArray<TSharedPtr<FJsonValue>> MappingArray;
 					for (const FRetargetChainPair& Pair : Pairs)
@@ -917,7 +923,7 @@ TSharedPtr<FJsonObject> FRetargetEditor::CreateRetargeter(const FString& Package
 		UIKRetargeter::StaticClass(), Package, FName(*Name),
 		RF_Public | RF_Standalone, nullptr, GWarn);
 
-	UIKRetargeter* Retargeter = Cast<UIKRetargeter>(NewObj);
+	UIKRetargeter* Retargeter = Cast<UIKRetargeter>(NewObj);  // Can get ChainMappings here in UE5.6
 	if (!Retargeter)
 	{
 		return ErrorResult(TEXT("Factory failed to create IKRetargeter"));
@@ -936,12 +942,24 @@ TSharedPtr<FJsonObject> FRetargetEditor::CreateRetargeter(const FString& Package
 	// Add default ops, clean duplicates, assign, auto-map
 	Controller->AddDefaultOps();
 	RemoveDuplicateOps(Controller);
-	Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Source, SourceRig);
-	Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Target, TargetRig);
+	
+	// Per op IK assignment is a concept of 5.7 only (ops could reference different rigs).  In 5.6 AddDefaultOps calls OnAddedToStack and adds IK assignments
+	// via the ASSET. 
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7
+	Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Source, SourceRig);  // AssignIKRigToAllOps not a member of UIKRetargeterController
+	Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Target, TargetRig);  // AssignIKRigToAllOps not a member of UIKRetargeterController
+#endif
 	Controller->AutoMapChains(EAutoMapChainType::Fuzzy, true);
 
 	// Pitfall #12: Auto-set Pelvis FK chain to GloballyScaled
 	// Find the FK Chains op and set the Pelvis chain translation mode
+	// Question: is ChainsToRetarget populated by FIKRetargetFKChainsOp::OnAddedToStack or AutoMapChains in UE5.6? This effects the pelvis fix loop FKSettings->ChainsToRetarget
+	/** Answer: 
+	 * OnAddedToStack: AddDefaultOps fills ChainsToRetarget, this is called inside OnAddedToStack
+	 * it is assumed that SetIKRig(Source/Target) must be called prior to AddDefaultOps because
+	 * AddDefaultOps requires IK to exist to work.  Since we initialize IK source/target
+	 * inside SetIKRig() -> we can safely later use AutoMapChains and Pelvis fix still works.
+	 * **/
 	int32 NumOps = Controller->GetNumRetargetOps();
 	for (int32 i = 0; i < NumOps; ++i)
 	{
@@ -993,7 +1011,9 @@ TSharedPtr<FJsonObject> FRetargetEditor::SetupOps(const FString& RetargeterPath)
 	// Add defaults, clean dupes, assign, map (pitfalls #9, #10)
 	Controller->AddDefaultOps();
 	RemoveDuplicateOps(Controller);
-
+	// Per op IK assignment is a concept of 5.7 only (ops could reference different rigs).  In 5.6 AddDefaultOps calls OnAddedToStack and adds IK assignments
+	// via the ASSET. 
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7
 	if (SourceRig)
 	{
 		Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Source, SourceRig);
@@ -1002,6 +1022,7 @@ TSharedPtr<FJsonObject> FRetargetEditor::SetupOps(const FString& RetargeterPath)
 	{
 		Controller->AssignIKRigToAllOps(ERetargetSourceOrTarget::Target, TargetRig);
 	}
+#endif
 	Controller->AutoMapChains(EAutoMapChainType::Fuzzy, true);
 
 	Retargeter->MarkPackageDirty();
@@ -1098,7 +1119,9 @@ TSharedPtr<FJsonObject> FRetargetEditor::ConfigureFK(const FString& RetargeterPa
 			else if (RotMode == TEXT("onetoonereversed")) Setting.RotationMode = EFKChainRotationMode::OneToOneReversed;
 			else if (RotMode == TEXT("matchchain")) Setting.RotationMode = EFKChainRotationMode::MatchChain;
 			else if (RotMode == TEXT("matchscaledchain")) Setting.RotationMode = EFKChainRotationMode::MatchScaledChain;
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7  // Don't need an elseif because case EFKChainRotationMode::CopyLocal will just never appear in ENGINE_VERSION < 5.7'
 			else if (RotMode == TEXT("copylocal")) Setting.RotationMode = EFKChainRotationMode::CopyLocal;
+#endif
 		}
 
 		// Alpha values
@@ -1306,6 +1329,7 @@ TSharedPtr<FJsonObject> FRetargetEditor::BatchRetarget(const FString& Retargeter
 	}
 
 	// Run DuplicateAndRetarget
+#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7
 	TArray<FAssetData> NewAssets = UIKRetargetBatchOperation::DuplicateAndRetarget(
 		AssetsToRetarget,
 		SourceMesh,
@@ -1318,6 +1342,19 @@ TSharedPtr<FJsonObject> FRetargetEditor::BatchRetarget(const FString& Retargeter
 		false,          // bIncludeReferencedAssets
 		true            // bOverwriteExistingFiles
 	);
+#elif ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 6  // UE5.6 does not have bOverwriteExistingFiles parameter
+	TArray<FAssetData> NewAssets = UIKRetargetBatchOperation::DuplicateAndRetarget(
+		AssetsToRetarget,
+		SourceMesh,
+		TargetMesh,
+		Retargeter,
+		TEXT(""),       // Search
+		TEXT(""),       // Replace
+		Prefix,         // Prefix
+		TEXT(""),       // Suffix
+		false           // bIncludeReferencedAssets
+	);
+#endif
 
 	// Process results
 	int32 RootMotionCount = 0;

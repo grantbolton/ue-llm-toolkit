@@ -2157,7 +2157,17 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleLayoutGraph(const FString& Bl
 		FGraphLayoutHelper::MakeDataConsumerFinder()
 	);
 
-	FAnimationBlueprintUtils::CompileAnimBlueprint(AnimBP, Error);
+	bool bIsStateBound = !StateMachineName.IsEmpty() && !StateName.IsEmpty();
+	bool bCompiled = false;
+	if (!bIsStateBound)
+	{
+		FAnimationBlueprintUtils::CompileAnimBlueprint(AnimBP, Error);
+		bCompiled = true;
+	}
+	else
+	{
+		AnimBP->GetPackage()->MarkPackageDirty();
+	}
 
 	TSharedPtr<FJsonObject> Result = MakeShared<FJsonObject>();
 	Result->SetBoolField(TEXT("success"), true);
@@ -2169,8 +2179,8 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleLayoutGraph(const FString& Bl
 	Result->SetNumberField(TEXT("disconnected_nodes"), LayoutResult.DisconnectedNodes);
 	Result->SetNumberField(TEXT("data_only_nodes"), LayoutResult.DataOnlyNodes);
 	Result->SetNumberField(TEXT("entry_points"), LayoutResult.EntryPoints);
-	Result->SetBoolField(TEXT("compiled"), true);
-	Result->SetStringField(TEXT("compile_status"), Error.IsEmpty() ? TEXT("OK") : Error);
+	Result->SetBoolField(TEXT("compiled"), bCompiled);
+	Result->SetStringField(TEXT("compile_status"), bCompiled ? (Error.IsEmpty() ? TEXT("OK") : Error) : TEXT("skipped (state-bound graph)"));
 
 	return FMCPToolResult::Success(
 		FString::Printf(TEXT("Laid out %d/%d nodes in %s (%d entry points, %d disconnected, %d data-only)"),

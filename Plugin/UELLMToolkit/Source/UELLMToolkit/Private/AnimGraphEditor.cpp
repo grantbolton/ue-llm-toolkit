@@ -289,23 +289,36 @@ bool FAnimGraphEditor::ConnectAnimNodes(
 			return false;
 		}
 
-		const UEdGraphSchema* Schema = Graph->GetSchema();
-		if (Schema)
+		bool bIsPosePin = (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Struct)
+			&& TargetPin->PinType.PinSubCategoryObject.IsValid()
+			&& (TargetPin->PinType.PinSubCategoryObject->GetName() == TEXT("PoseLink")
+				|| TargetPin->PinType.PinSubCategoryObject->GetName() == TEXT("ComponentSpacePoseLink"));
+
+		if (bIsPosePin)
 		{
-			TargetPin->BreakAllPinLinks();
-			FPinConnectionResponse Response = Schema->CanCreateConnection(SourcePin, TargetPin);
-			if (Response.Response == CONNECT_RESPONSE_DISALLOW)
-			{
-				OutError = FString::Printf(TEXT("Schema rejected connection '%s' -> '%s': %s"),
-					*SourcePinName, *TargetPinName, *Response.Message.ToString());
-				return false;
-			}
-			Schema->TryCreateConnection(SourcePin, TargetPin);
+			TargetPin->BreakAllPinLinks(false);
+			SourcePin->MakeLinkTo(TargetPin);
 		}
 		else
 		{
-			TargetPin->BreakAllPinLinks();
-			SourcePin->MakeLinkTo(TargetPin);
+			const UEdGraphSchema* Schema = Graph->GetSchema();
+			if (Schema)
+			{
+				TargetPin->BreakAllPinLinks();
+				FPinConnectionResponse Response = Schema->CanCreateConnection(SourcePin, TargetPin);
+				if (Response.Response == CONNECT_RESPONSE_DISALLOW)
+				{
+					OutError = FString::Printf(TEXT("Schema rejected connection '%s' -> '%s': %s"),
+						*SourcePinName, *TargetPinName, *Response.Message.ToString());
+					return false;
+				}
+				Schema->TryCreateConnection(SourcePin, TargetPin);
+			}
+			else
+			{
+				TargetPin->BreakAllPinLinks();
+				SourcePin->MakeLinkTo(TargetPin);
+			}
 		}
 	}
 	else
@@ -336,17 +349,8 @@ bool FAnimGraphEditor::ConnectAnimNodes(
 			return false;
 		}
 
-		TargetPin->BreakAllPinLinks();
-
-		const UEdGraphSchema* Schema = Graph->GetSchema();
-		if (Schema)
-		{
-			Schema->TryCreateConnection(SourcePin, TargetPin);
-		}
-		else
-		{
-			SourcePin->MakeLinkTo(TargetPin);
-		}
+		TargetPin->BreakAllPinLinks(false);
+		SourcePin->MakeLinkTo(TargetPin);
 	}
 
 	Graph->Modify();

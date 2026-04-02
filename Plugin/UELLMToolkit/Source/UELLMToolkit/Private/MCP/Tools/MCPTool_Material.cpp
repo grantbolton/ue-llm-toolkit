@@ -31,7 +31,25 @@ FMCPToolInfo FMCPTool_Material::GetInfo() const
 {
 	FMCPToolInfo Info;
 	Info.Name = TEXT("material");
-	Info.Description = TEXT("Material instance creation and assignment operations for meshes and actors");
+	Info.Description = TEXT(
+		"Material instance creation, parameter editing, and assignment.\n\n"
+		"Operations:\n"
+		"- 'create_material_instance': Create new material instance from parent material.\n"
+		"  Params: asset_name, parent_material (required); package_path (default /Game/Materials/), parameters (optional initial values)\n\n"
+		"- 'set_material_parameters': Set scalar/vector/texture params on existing material instance.\n"
+		"  Params: material_instance_path (required), parameters: {scalars: {name: value}, vectors: {name: {r,g,b,a}}, textures: {name: path}}\n\n"
+		"- 'set_skeletal_mesh_material': Assign material to a skeletal mesh slot.\n"
+		"  Params: skeletal_mesh_path, material_path (required); material_slot (default 0)\n\n"
+		"- 'set_actor_material': Assign material to an actor's mesh component in the level.\n"
+		"  Params: actor_name, material_path (required); material_slot (default 0)\n\n"
+		"- 'get_material_info': Get material instance info (parent, parameters, type).\n"
+		"  Params: asset_path (required)\n\n"
+		"Quick Start:\n"
+		"  Create: {\"operation\":\"create_material_instance\",\"asset_name\":\"MI_Glow\",\"parent_material\":\"/Game/Materials/M_Base\"}\n"
+		"  Set params: {\"operation\":\"set_material_parameters\",\"material_instance_path\":\"/Game/Materials/MI_Glow\",\"parameters\":{\"scalars\":{\"Metallic\":0.8},\"vectors\":{\"BaseColor\":{\"r\":1,\"g\":0,\"b\":0,\"a\":1}}}}\n"
+		"  Assign to mesh: {\"operation\":\"set_skeletal_mesh_material\",\"skeletal_mesh_path\":\"/Game/Characters/SK_Hero\",\"material_path\":\"/Game/Materials/MI_Glow\",\"material_slot\":0}\n"
+		"  Inspect: {\"operation\":\"get_material_info\",\"asset_path\":\"/Game/Materials/MI_Glow\"}"
+	);
 
 	// Parameters
 	Info.Parameters.Add(FMCPToolParameter(TEXT("operation"), TEXT("string"),
@@ -43,7 +61,7 @@ FMCPToolInfo FMCPTool_Material::GetInfo() const
 	Info.Parameters.Add(FMCPToolParameter(TEXT("parent_material"), TEXT("string"),
 		TEXT("Asset path to parent material (for create_material_instance)")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("package_path"), TEXT("string"),
-		TEXT("Package path for new asset (default: /Game/Materials/)")));
+		TEXT("Package path for new asset (default: /Game/Materials/)"), false, TEXT("/Game/Materials/")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("parameters"), TEXT("object"),
 		TEXT("Material parameters to set: {scalars: {name: value}, vectors: {name: {r,g,b,a}}, textures: {name: path}}")));
 
@@ -55,7 +73,7 @@ FMCPToolInfo FMCPTool_Material::GetInfo() const
 	Info.Parameters.Add(FMCPToolParameter(TEXT("skeletal_mesh_path"), TEXT("string"),
 		TEXT("Asset path to skeletal mesh (for set_skeletal_mesh_material)")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("material_slot"), TEXT("integer"),
-		TEXT("Material slot index to set (for set_skeletal_mesh_material)")));
+		TEXT("Material slot index to set (for set_skeletal_mesh_material)"), false, TEXT("0")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("material_path"), TEXT("string"),
 		TEXT("Asset path to material to assign (for set_skeletal_mesh_material)")));
 
@@ -74,6 +92,13 @@ FMCPToolInfo FMCPTool_Material::GetInfo() const
 
 FMCPToolResult FMCPTool_Material::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	// Resolve parameter aliases (blueprint_path/path -> asset_path)
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("blueprint_path"), TEXT("asset_path")},
+		{TEXT("path"), TEXT("asset_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
 	if (!ExtractRequiredString(Params, TEXT("operation"), Operation, Error))
@@ -82,6 +107,18 @@ FMCPToolResult FMCPTool_Material::Execute(const TSharedRef<FJsonObject>& Params)
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("create"), TEXT("create_material_instance")},
+		{TEXT("get_info"), TEXT("get_material_info")},
+		{TEXT("info"), TEXT("get_material_info")},
+		{TEXT("inspect"), TEXT("get_material_info")},
+		{TEXT("set_params"), TEXT("set_material_parameters")},
+		{TEXT("set_parameters"), TEXT("set_material_parameters")},
+		{TEXT("set_mesh_material"), TEXT("set_skeletal_mesh_material")},
+		{TEXT("set_actor"), TEXT("set_actor_material")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	if (Operation == TEXT("create_material_instance"))
 	{
@@ -104,9 +141,10 @@ FMCPToolResult FMCPTool_Material::Execute(const TSharedRef<FJsonObject>& Params)
 		return ExecuteGetMaterialInfo(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: %s. Valid: create_material_instance, set_material_parameters, set_skeletal_mesh_material, set_actor_material, get_material_info"),
-		*Operation));
+	return UnknownOperationError(Operation, {
+		TEXT("create_material_instance"), TEXT("set_material_parameters"),
+		TEXT("set_skeletal_mesh_material"), TEXT("set_actor_material"), TEXT("get_material_info")
+	});
 }
 
 FMCPToolResult FMCPTool_Material::ExecuteCreateMaterialInstance(const TSharedRef<FJsonObject>& Params)
@@ -185,8 +223,8 @@ FMCPToolResult FMCPTool_Material::ExecuteCreateMaterialInstance(const TSharedRef
 	// Apply parameters if provided
 	if (Params->HasField(TEXT("parameters")))
 	{
-		const TSharedPtr<FJsonObject>* ParamsObj;
-		if (Params->TryGetObjectField(TEXT("parameters"), ParamsObj))
+		const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+		if (Params->TryGetObjectField(TEXT("parameters"), ParamsObj) && ParamsObj && (*ParamsObj).IsValid())
 		{
 			FString ParamError;
 			if (!ApplyParametersFromJson(MatInst, *ParamsObj, ParamError))
@@ -202,7 +240,10 @@ FMCPToolResult FMCPTool_Material::ExecuteCreateMaterialInstance(const TSharedRef
 	Package->MarkPackageDirty();
 
 	// Save the asset
-	FString PackageFileName = FPackageName::LongPackageNameToFilename(FullPackagePath, FPackageName::GetAssetPackageExtension());
+	FString SaveExtension = Package->ContainsMap()
+		? FPackageName::GetMapPackageExtension()
+		: FPackageName::GetAssetPackageExtension();
+	FString PackageFileName = FPackageName::LongPackageNameToFilename(FullPackagePath, SaveExtension);
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 	FSavePackageResultStruct SaveResult = UPackage::Save(Package, MatInst, *PackageFileName, SaveArgs);
@@ -247,8 +288,8 @@ FMCPToolResult FMCPTool_Material::ExecuteSetMaterialParameters(const TSharedRef<
 	}
 
 	// Get parameters
-	const TSharedPtr<FJsonObject>* ParamsObj;
-	if (!Params->TryGetObjectField(TEXT("parameters"), ParamsObj))
+	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
+	if (!Params->TryGetObjectField(TEXT("parameters"), ParamsObj) || !ParamsObj || !(*ParamsObj).IsValid())
 	{
 		return FMCPToolResult::Error(TEXT("Missing required parameter: parameters"));
 	}
@@ -535,8 +576,8 @@ bool FMCPTool_Material::ApplyParametersFromJson(UMaterialInstanceConstant* MatIn
 	TArray<FString> Errors;
 
 	// Process scalar parameters
-	const TSharedPtr<FJsonObject>* ScalarsObj;
-	if (ParamsObj->TryGetObjectField(TEXT("scalars"), ScalarsObj))
+	const TSharedPtr<FJsonObject>* ScalarsObj = nullptr;
+	if (ParamsObj->TryGetObjectField(TEXT("scalars"), ScalarsObj) && ScalarsObj && (*ScalarsObj).IsValid())
 	{
 		for (const auto& Pair : (*ScalarsObj)->Values)
 		{
@@ -554,13 +595,13 @@ bool FMCPTool_Material::ApplyParametersFromJson(UMaterialInstanceConstant* MatIn
 	}
 
 	// Process vector parameters
-	const TSharedPtr<FJsonObject>* VectorsObj;
-	if (ParamsObj->TryGetObjectField(TEXT("vectors"), VectorsObj))
+	const TSharedPtr<FJsonObject>* VectorsObj = nullptr;
+	if (ParamsObj->TryGetObjectField(TEXT("vectors"), VectorsObj) && VectorsObj && (*VectorsObj).IsValid())
 	{
 		for (const auto& Pair : (*VectorsObj)->Values)
 		{
-			const TSharedPtr<FJsonObject>* ColorObj;
-			if (Pair.Value->TryGetObject(ColorObj))
+			const TSharedPtr<FJsonObject>* ColorObj = nullptr;
+			if (Pair.Value->TryGetObject(ColorObj) && ColorObj && (*ColorObj).IsValid())
 			{
 				FLinearColor Color;
 				(*ColorObj)->TryGetNumberField(TEXT("r"), Color.R);
@@ -580,8 +621,8 @@ bool FMCPTool_Material::ApplyParametersFromJson(UMaterialInstanceConstant* MatIn
 	}
 
 	// Process texture parameters
-	const TSharedPtr<FJsonObject>* TexturesObj;
-	if (ParamsObj->TryGetObjectField(TEXT("textures"), TexturesObj))
+	const TSharedPtr<FJsonObject>* TexturesObj = nullptr;
+	if (ParamsObj->TryGetObjectField(TEXT("textures"), TexturesObj) && TexturesObj && (*TexturesObj).IsValid())
 	{
 		for (const auto& Pair : (*TexturesObj)->Values)
 		{

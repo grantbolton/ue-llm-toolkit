@@ -1212,11 +1212,14 @@ UEdGraphNode* FBlueprintGraphEditor::CreateControlRigNode(
 	{
 		TArray<FOptionalPinFromProperty>* PinProps =
 			ArrayProp->ContainerPtrToValuePtr<TArray<FOptionalPinFromProperty>>(CRNode);
-		for (FOptionalPinFromProperty& PinProp : *PinProps)
+		if (PinProps)
 		{
-			if (PinProp.bCanToggleVisibility)
+			for (FOptionalPinFromProperty& PinProp : *PinProps)
 			{
-				PinProp.bShowPin = true;
+				if (PinProp.bCanToggleVisibility)
+				{
+					PinProp.bShowPin = true;
+				}
 			}
 		}
 	}

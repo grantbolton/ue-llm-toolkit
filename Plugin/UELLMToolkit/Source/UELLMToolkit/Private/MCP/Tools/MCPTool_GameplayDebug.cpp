@@ -45,8 +45,10 @@ namespace
 	{
 		if (!PIEWorld) return nullptr;
 		APlayerController* PC = PIEWorld->GetFirstPlayerController();
-		if (!PC || !PC->GetLocalPlayer()) return nullptr;
-		return PC->GetLocalPlayer()->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+		if (!PC) return nullptr;
+		ULocalPlayer* LP = PC->GetLocalPlayer();
+		if (!LP) return nullptr;
+		return LP->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	}
 }
 
@@ -73,6 +75,23 @@ FMCPToolResult FMCPTool_GameplayDebug::Execute(const TSharedRef<FJsonObject>& Pa
 		return Error.GetValue();
 	}
 
+	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("run"), TEXT("run_sequence")},
+		{TEXT("status"), TEXT("pie_status")},
+		{TEXT("start"), TEXT("start_pie")},
+		{TEXT("stop"), TEXT("stop_pie")},
+		{TEXT("capture"), TEXT("capture_pie")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
+
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!World)
+	{
+		return FMCPToolResult::Error(TEXT("No world context available"));
+	}
+
 	if (Operation == TEXT("start_pie")) return ExecuteStartPIE(Params);
 	if (Operation == TEXT("stop_pie")) return ExecuteStopPIE(Params);
 	if (Operation == TEXT("pie_status")) return ExecutePIEStatus(Params);
@@ -91,11 +110,13 @@ FMCPToolResult FMCPTool_GameplayDebug::Execute(const TSharedRef<FJsonObject>& Pa
 	if (Operation == TEXT("montage_jump_to_section")) return ExecuteMontageJumpToSection(Params);
 	if (Operation == TEXT("montage_stop")) return ExecuteMontageStop(Params);
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: %s. Valid: run_sequence, start_pie, stop_pie, pie_status, inject_input, "
-			"start_continuous, update_continuous, stop_continuous, capture_pie, execute_sequence, sequence_status, "
-			"start_monitor, stop_monitor, monitor_status, play_montage, montage_jump_to_section, montage_stop"),
-		*Operation));
+	return UnknownOperationError(Operation, {
+		TEXT("run_sequence"), TEXT("start_pie"), TEXT("stop_pie"), TEXT("pie_status"),
+		TEXT("inject_input"), TEXT("start_continuous"), TEXT("update_continuous"), TEXT("stop_continuous"),
+		TEXT("capture_pie"), TEXT("execute_sequence"), TEXT("sequence_status"),
+		TEXT("start_monitor"), TEXT("stop_monitor"), TEXT("monitor_status"),
+		TEXT("play_montage"), TEXT("montage_jump_to_section"), TEXT("montage_stop")
+	});
 }
 
 // ============================================================================
@@ -177,9 +198,10 @@ FMCPToolResult FMCPTool_GameplayDebug::ExecutePIEStatus(const TSharedRef<FJsonOb
 			Data->SetNumberField(TEXT("real_time"), PIEWorld->GetRealTimeSeconds());
 
 			APlayerController* PC = PIEWorld->GetFirstPlayerController();
-			if (PC && PC->GetPawn())
+			APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+			if (Pawn)
 			{
-				FVector Loc = PC->GetPawn()->GetActorLocation();
+				FVector Loc = Pawn->GetActorLocation();
 				TSharedPtr<FJsonObject> PawnLoc = MakeShared<FJsonObject>();
 				PawnLoc->SetNumberField(TEXT("x"), Loc.X);
 				PawnLoc->SetNumberField(TEXT("y"), Loc.Y);
@@ -487,6 +509,8 @@ FMCPToolResult FMCPTool_GameplayDebug::ExecuteSequence(const TSharedRef<FJsonObj
 	TArray<FPIESequenceStep> Steps;
 	for (int32 i = 0; i < StepsArray->Num(); ++i)
 	{
+		if (!(*StepsArray)[i].IsValid()) continue;
+
 		const TSharedPtr<FJsonObject>* StepObj = nullptr;
 		if (!(*StepsArray)[i]->TryGetObject(StepObj) || !StepObj || !(*StepObj).IsValid())
 		{

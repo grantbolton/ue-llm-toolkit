@@ -46,7 +46,13 @@ public:
 			"- 'get_curves': Get all float curves with full key data (time, value, interp/tangent modes)\n"
 			"- 'add_curve': Create a named float curve (optional initial keys)\n"
 			"- 'remove_curve': Delete a curve by name\n"
-			"- 'set_curve_keys': Replace all keys on an existing curve"
+			"- 'set_curve_keys': Replace all keys on an existing curve\n\n"
+			"Quick Start:\n"
+			"  Inspect: {\"operation\":\"get_info\",\"montage_path\":\"/Game/Anims/AM_Attack\"}\n"
+			"  Create: {\"operation\":\"create\",\"package_path\":\"/Game/Animations\",\"montage_name\":\"AM_Attack\",\"skeleton_path\":\"/Game/Characters/SK_Mannequin\"}\n"
+			"  Add notify: {\"operation\":\"add_notify\",\"montage_path\":\"/Game/Anims/AM_Attack\",\"notify_name\":\"HitWindow\",\"trigger_time\":0.3,\"track_index\":0}\n"
+			"  Notify state: {\"operation\":\"add_notify_state\",\"montage_path\":\"/Game/Anims/AM_Attack\",\"notify_name\":\"Trail\",\"notify_class\":\"AnimNotifyState_Trail\",\"trigger_time\":0.2,\"duration\":0.4}\n"
+			"  Set blend: {\"operation\":\"set_blend_in\",\"montage_path\":\"/Game/Anims/AM_Attack\",\"blend_time\":0.15,\"blend_option\":\"Linear\"}"
 		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("montage_path"), TEXT("string"), TEXT("Path to montage asset (e.g., '/Game/Animations/AM_Attack')"), true),

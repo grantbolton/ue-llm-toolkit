@@ -22,6 +22,14 @@ FMCPToolResult FMCPTool_LevelQuery::Execute(const TSharedRef<FJsonObject>& Param
 
 	Operation = Operation.ToLower();
 
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("search"), TEXT("find")},
+		{TEXT("get"), TEXT("info")},
+		{TEXT("get_info"), TEXT("info")},
+		{TEXT("inspect"), TEXT("info")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
+
 	if (Operation == TEXT("list"))
 	{
 		return ExecuteList(World);
@@ -45,13 +53,16 @@ FMCPToolResult FMCPTool_LevelQuery::Execute(const TSharedRef<FJsonObject>& Param
 		return ExecuteInfo(World, ActorLabel);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: '%s'. Valid operations: 'list', 'find', 'info'"), *Operation));
+	return UnknownOperationError(Operation, {TEXT("list"), TEXT("find"), TEXT("info")});
 }
 
 FMCPToolResult FMCPTool_LevelQuery::ExecuteList(UWorld* World)
 {
 	TSharedPtr<FJsonObject> Data = FLevelQueryHelper::ListGameplayActors(World);
+	if (!Data.IsValid())
+	{
+		return FMCPToolResult::Error(TEXT("ListGameplayActors returned null"));
+	}
 
 	int32 GameplayCount = static_cast<int32>(Data->GetNumberField(TEXT("gameplay_actors")));
 	int32 FilteredCount = static_cast<int32>(Data->GetNumberField(TEXT("filtered_count")));
@@ -65,6 +76,10 @@ FMCPToolResult FMCPTool_LevelQuery::ExecuteList(UWorld* World)
 FMCPToolResult FMCPTool_LevelQuery::ExecuteFind(UWorld* World, const FString& Pattern)
 {
 	TSharedPtr<FJsonObject> Data = FLevelQueryHelper::FindActors(World, Pattern);
+	if (!Data.IsValid())
+	{
+		return FMCPToolResult::Error(TEXT("FindActors returned null"));
+	}
 
 	int32 MatchCount = static_cast<int32>(Data->GetNumberField(TEXT("match_count")));
 

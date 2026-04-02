@@ -22,12 +22,28 @@ TOptional<FMCPToolResult> FMCPTool_MontageModify::LoadMontageOrError(
 
 FMCPToolResult FMCPTool_MontageModify::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("asset_path"), TEXT("montage_path")},
+		{TEXT("blueprint_path"), TEXT("montage_path")},
+		{TEXT("path"), TEXT("montage_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
 	if (!ExtractRequiredString(Params, TEXT("operation"), Operation, Error))
 	{
 		return Error.GetValue();
 	}
+
+	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("info"), TEXT("get_info")},
+		{TEXT("inspect"), TEXT("get_info")},
+		{TEXT("get"), TEXT("get_info")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	if (Operation == TEXT("create"))
 	{
@@ -138,7 +154,7 @@ FMCPToolResult FMCPTool_MontageModify::Execute(const TSharedRef<FJsonObject>& Pa
 		return HandleSetCurveKeys(MontagePath, Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(TEXT("Unknown operation: '%s'"), *Operation));
+	return UnknownOperationError(Operation, {TEXT("create"), TEXT("get_info"), TEXT("save"), TEXT("add_section"), TEXT("remove_section"), TEXT("link_sections"), TEXT("add_segment"), TEXT("remove_segment"), TEXT("set_segment"), TEXT("add_slot"), TEXT("remove_slot"), TEXT("add_notify"), TEXT("add_notify_state"), TEXT("remove_notify"), TEXT("move_notify"), TEXT("rename_track"), TEXT("cleanup_tracks"), TEXT("set_notify_properties"), TEXT("set_blend_in"), TEXT("set_blend_out"), TEXT("get_curves"), TEXT("add_curve"), TEXT("remove_curve"), TEXT("set_curve_keys")});
 }
 
 FMCPToolResult FMCPTool_MontageModify::HandleGetInfo(const FString& MontagePath)
@@ -749,6 +765,7 @@ static TArray<FRichCurveKey> ParseKeysFromJson(const TArray<TSharedPtr<FJsonValu
 		const TSharedPtr<FJsonObject>* KeyObjPtr = nullptr;
 		if (!KeyVal || !KeyVal->TryGetObject(KeyObjPtr) || !KeyObjPtr)
 		{
+			UE_LOG(LogTemp, Warning, TEXT("ParseKeysFromJson: Skipping invalid key entry (not a JSON object)"));
 			continue;
 		}
 		const TSharedPtr<FJsonObject>& KeyObj = *KeyObjPtr;
@@ -756,6 +773,7 @@ static TArray<FRichCurveKey> ParseKeysFromJson(const TArray<TSharedPtr<FJsonValu
 		double Time = 0.0, Value = 0.0;
 		if (!KeyObj->TryGetNumberField(TEXT("time"), Time) || !KeyObj->TryGetNumberField(TEXT("value"), Value))
 		{
+			UE_LOG(LogTemp, Warning, TEXT("ParseKeysFromJson: Skipping key missing required 'time' or 'value' fields"));
 			continue;
 		}
 

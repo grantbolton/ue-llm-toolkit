@@ -5,6 +5,11 @@
 
 static FMCPToolResult WidgetJsonToToolResult(const TSharedPtr<FJsonObject>& Result, const FString& SuccessContext)
 {
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
+
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);
 
@@ -69,6 +74,58 @@ FMCPToolResult FMCPTool_Widget::Execute(const TSharedRef<FJsonObject>& Params)
 	{
 		return HandleSetSlot(Params);
 	}
+	else if (Operation == TEXT("set_brush"))
+	{
+		return HandleSetBrush(Params);
+	}
+	else if (Operation == TEXT("reparent_widget"))
+	{
+		return HandleReparentWidget(Params);
+	}
+	else if (Operation == TEXT("reorder_child") || Operation == TEXT("reorder_children"))
+	{
+		return HandleReorderChild(Params);
+	}
+	else if (Operation == TEXT("clone_widget"))
+	{
+		return HandleCloneWidget(Params);
+	}
+	else if (Operation == TEXT("list_events"))
+	{
+		return HandleListEvents(Params);
+	}
+	else if (Operation == TEXT("bind_event"))
+	{
+		return HandleBindEvent(Params);
+	}
+	else if (Operation == TEXT("bind_property"))
+	{
+		return HandleBindProperty(Params);
+	}
+	else if (Operation == TEXT("unbind_property"))
+	{
+		return HandleUnbindProperty(Params);
+	}
+	else if (Operation == TEXT("list_bindings"))
+	{
+		return HandleListBindings(Params);
+	}
+	else if (Operation == TEXT("list_animations"))
+	{
+		return HandleListAnimations(Params);
+	}
+	else if (Operation == TEXT("inspect_animation"))
+	{
+		return HandleInspectAnimation(Params);
+	}
+	else if (Operation == TEXT("create_animation"))
+	{
+		return HandleCreateAnimation(Params);
+	}
+	else if (Operation == TEXT("add_animation_track"))
+	{
+		return HandleAddAnimationTrack(Params);
+	}
 	else if (Operation == TEXT("save"))
 	{
 		return HandleSave(Params);
@@ -79,7 +136,7 @@ FMCPToolResult FMCPTool_Widget::Execute(const TSharedRef<FJsonObject>& Params)
 	}
 
 	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: '%s'. Valid: inspect, get_properties, create, add_widget, remove_widget, set_property, set_slot, save, batch"),
+		TEXT("Unknown operation: '%s'. Valid: inspect, get_properties, create, add_widget, remove_widget, set_property, set_slot, set_brush, reparent_widget, reorder_child, clone_widget, list_events, bind_event, bind_property, unbind_property, list_bindings, list_animations, inspect_animation, create_animation, add_animation_track, save, batch"),
 		*Operation));
 }
 
@@ -260,6 +317,258 @@ FMCPToolResult FMCPTool_Widget::HandleSetSlot(const TSharedRef<FJsonObject>& Par
 	return WidgetJsonToToolResult(Result, TEXT("Slot properties set"));
 }
 
+FMCPToolResult FMCPTool_Widget::HandleSetBrush(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	const TSharedPtr<FJsonObject>* BrushObj = nullptr;
+	if (!Params->TryGetObjectField(TEXT("brush"), BrushObj) || !BrushObj)
+	{
+		return FMCPToolResult::Error(TEXT("Missing required parameter: brush (JSON object)"));
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	FString BrushProperty = ExtractOptionalString(Params, TEXT("brush_property"), FString());
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::SetBrush(WBP, WidgetName, BrushProperty, *BrushObj);
+	return WidgetJsonToToolResult(Result, TEXT("Brush set"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleReparentWidget(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName, NewParentName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("new_parent_name"), NewParentName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::ReparentWidget(WBP, WidgetName, NewParentName);
+	return WidgetJsonToToolResult(Result, TEXT("Widget reparented"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleReorderChild(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, ParentName, ChildName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("parent_name"), ParentName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("child_name"), ChildName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	double NewIndex = 0;
+	if (!Params->TryGetNumberField(TEXT("new_index"), NewIndex))
+	{
+		return FMCPToolResult::Error(TEXT("Missing required parameter: new_index"));
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::ReorderChild(WBP, ParentName, ChildName, static_cast<int32>(NewIndex));
+	return WidgetJsonToToolResult(Result, TEXT("Child reordered"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleCloneWidget(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName, NewName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("new_name"), NewName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString TargetParent = ExtractOptionalString(Params, TEXT("target_parent"), FString());
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::CloneWidget(WBP, WidgetName, NewName, TargetParent);
+	return WidgetJsonToToolResult(Result, TEXT("Widget cloned"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleListEvents(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::ListWidgetEvents(AssetPath, WidgetName);
+	return WidgetJsonToToolResult(Result, TEXT("Widget events listed"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleBindEvent(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName, EventName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("event_name"), EventName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString FunctionName = ExtractOptionalString(Params, TEXT("function_name"), FString());
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::BindEvent(WBP, WidgetName, EventName, FunctionName);
+	return WidgetJsonToToolResult(Result, TEXT("Event bound"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleBindProperty(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName, PropertyName, FunctionName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("property_name"), PropertyName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("function_name"), FunctionName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::BindProperty(WBP, WidgetName, PropertyName, FunctionName);
+	return WidgetJsonToToolResult(Result, TEXT("Property bound"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleUnbindProperty(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, WidgetName, PropertyName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("property_name"), PropertyName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::UnbindProperty(WBP, WidgetName, PropertyName);
+	return WidgetJsonToToolResult(Result, TEXT("Property unbound"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleListBindings(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath;
+	TOptional<FMCPToolResult> Error;
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::ListBindings(AssetPath);
+	return WidgetJsonToToolResult(Result, TEXT("Bindings listed"));
+}
+
 FMCPToolResult FMCPTool_Widget::HandleSave(const TSharedRef<FJsonObject>& Params)
 {
 	FString AssetPath;
@@ -305,6 +614,10 @@ FMCPToolResult FMCPTool_Widget::HandleBatch(const TSharedRef<FJsonObject>& Param
 	}
 
 	TSharedPtr<FJsonObject> Result = FWidgetEditor::ExecuteBatch(WBP, *OpsArray);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Batch operation returned null result"));
+	}
 
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);
@@ -327,4 +640,105 @@ FMCPToolResult FMCPTool_Widget::HandleBatch(const TSharedRef<FJsonObject>& Param
 		PartialResult.Data = Result;
 		return PartialResult;
 	}
+}
+
+// ============================================================================
+// Animation Handlers
+// ============================================================================
+
+FMCPToolResult FMCPTool_Widget::HandleListAnimations(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath;
+	TOptional<FMCPToolResult> Error;
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::ListAnimations(AssetPath);
+	return WidgetJsonToToolResult(Result, TEXT("Animations listed"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleInspectAnimation(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, AnimationName;
+	TOptional<FMCPToolResult> Error;
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("animation_name"), AnimationName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::InspectAnimation(AssetPath, AnimationName);
+	return WidgetJsonToToolResult(Result, TEXT("Animation inspected"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleCreateAnimation(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, AnimationName;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("animation_name"), AnimationName, Error))
+	{
+		return Error.GetValue();
+	}
+
+	double Length = 1.0;
+	Params->TryGetNumberField(TEXT("length"), Length);
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::CreateAnimation(WBP, AnimationName, static_cast<float>(Length));
+	return WidgetJsonToToolResult(Result, TEXT("Animation created"));
+}
+
+FMCPToolResult FMCPTool_Widget::HandleAddAnimationTrack(const TSharedRef<FJsonObject>& Params)
+{
+	FString AssetPath, AnimationName, WidgetName, TrackType;
+	TOptional<FMCPToolResult> Error;
+
+	if (!ExtractRequiredString(Params, TEXT("asset_path"), AssetPath, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("animation_name"), AnimationName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("widget_name"), WidgetName, Error))
+	{
+		return Error.GetValue();
+	}
+	if (!ExtractRequiredString(Params, TEXT("track_type"), TrackType, Error))
+	{
+		return Error.GetValue();
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* KeyframesArray = nullptr;
+	if (!Params->TryGetArrayField(TEXT("keyframes"), KeyframesArray) || !KeyframesArray)
+	{
+		return FMCPToolResult::Error(TEXT("Missing required parameter: keyframes (JSON array)"));
+	}
+
+	FString LoadError;
+	UWidgetBlueprint* WBP = FWidgetEditor::LoadWidgetBlueprint(AssetPath, LoadError);
+	if (!WBP)
+	{
+		return FMCPToolResult::Error(LoadError);
+	}
+
+	TSharedPtr<FJsonObject> Result = FWidgetEditor::AddAnimationTrack(WBP, AnimationName, WidgetName, TrackType, *KeyframesArray);
+	return WidgetJsonToToolResult(Result, TEXT("Animation track added"));
 }

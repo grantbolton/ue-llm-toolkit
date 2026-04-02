@@ -379,6 +379,7 @@ TSharedPtr<FJsonObject> FLevelQueryHelper::InspectActor(UWorld* World, const FSt
 	TArray<TSharedPtr<FJsonValue>> ComponentArray;
 	for (UActorComponent* Comp : AllComponents)
 	{
+		if (!Comp) continue;
 		TSharedPtr<FJsonObject> CompJson = MakeShared<FJsonObject>();
 		CompJson->SetStringField(TEXT("name"), Comp->GetName());
 		CompJson->SetStringField(TEXT("class"), Comp->GetClass()->GetName());

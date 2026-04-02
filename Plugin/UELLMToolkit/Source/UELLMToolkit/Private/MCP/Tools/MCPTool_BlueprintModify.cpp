@@ -45,6 +45,13 @@ namespace BlueprintModifyOps
 
 FMCPToolResult FMCPTool_BlueprintModify::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	// Resolve parameter aliases (asset_path/path -> blueprint_path)
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("asset_path"), TEXT("blueprint_path")},
+		{TEXT("path"), TEXT("blueprint_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	// Get operation type
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
@@ -54,6 +61,18 @@ FMCPToolResult FMCPTool_BlueprintModify::Execute(const TSharedRef<FJsonObject>& 
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("add_var"), TEXT("add_variable")},
+		{TEXT("remove_var"), TEXT("remove_variable")},
+		{TEXT("add_func"), TEXT("add_function")},
+		{TEXT("remove_func"), TEXT("remove_function")},
+		{TEXT("cdo"), TEXT("set_cdo_default")},
+		{TEXT("component_default"), TEXT("set_component_default")},
+		{TEXT("wire"), TEXT("connect_pins")},
+		{TEXT("layout"), TEXT("layout_graph")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	// Level 2: Variable/Function Operations
 	if (Operation == BlueprintModifyOps::Create)
@@ -147,9 +166,17 @@ FMCPToolResult FMCPTool_BlueprintModify::Execute(const TSharedRef<FJsonObject>& 
 		return ExecuteCompileAll(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: '%s'. Valid: create, reparent, add_variable, remove_variable, add_function, remove_function, add_node, add_nodes, delete_node, connect_pins, disconnect_pins, set_pin_value, set_component_default, set_cdo_default, add_component, remove_component, add_debug_print, remove_debug_print, layout_graph, compile, compile_all"),
-		*Operation));
+	return UnknownOperationError(Operation, {
+		BlueprintModifyOps::Create, BlueprintModifyOps::Reparent,
+		BlueprintModifyOps::AddVariable, BlueprintModifyOps::RemoveVariable,
+		BlueprintModifyOps::AddFunction, BlueprintModifyOps::RemoveFunction,
+		BlueprintModifyOps::AddNode, BlueprintModifyOps::AddNodes, BlueprintModifyOps::DeleteNode,
+		BlueprintModifyOps::ConnectPins, BlueprintModifyOps::DisconnectPins, BlueprintModifyOps::SetPinValue,
+		BlueprintModifyOps::SetComponentDefault, BlueprintModifyOps::SetCDODefault,
+		BlueprintModifyOps::AddComponent, BlueprintModifyOps::RemoveComponent,
+		BlueprintModifyOps::AddDebugPrint, BlueprintModifyOps::RemoveDebugPrint,
+		BlueprintModifyOps::LayoutGraph, BlueprintModifyOps::Compile, BlueprintModifyOps::CompileAll
+	});
 }
 
 FMCPToolResult FMCPTool_BlueprintModify::ExecuteCreate(const TSharedRef<FJsonObject>& Params)

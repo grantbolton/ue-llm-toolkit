@@ -1,6 +1,7 @@
 // Copyright Natali Caggiano. All Rights Reserved.
 
 #include "MCPToolBase.h"
+#include "MCPErrors.h"
 #include "Editor.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -13,13 +14,13 @@ TOptional<FMCPToolResult> FMCPToolBase::ValidateEditorContext(UWorld*& OutWorld)
 
 	if (!GEditor)
 	{
-		return FMCPToolResult::Error(TEXT("Editor not available"));
+		return FMCPErrors::EditorNotAvailable();
 	}
 
 	OutWorld = GEditor->GetEditorWorldContext().World();
 	if (!OutWorld)
 	{
-		return FMCPToolResult::Error(TEXT("No active world"));
+		return FMCPErrors::NoActiveWorld();
 	}
 
 	return TOptional<FMCPToolResult>(); // Success - no error
@@ -378,4 +379,77 @@ bool FMCPToolBase::SetMapPropertyFromJson(
 
 	MapHelper.Rehash();
 	return true;
+}
+
+FString FMCPToolBase::ResolveOperationAlias(const FString& Operation, const TMap<FString, FString>& AliasMap)
+{
+	if (Operation.IsEmpty()) { return Operation; }
+	const FString* Resolved = AliasMap.Find(Operation);
+	return Resolved ? *Resolved : Operation;
+}
+
+void FMCPToolBase::ResolveParamAliases(const TSharedRef<FJsonObject>& Params, const TMap<FString, FString>& ParamAliasMap)
+{
+	if (ParamAliasMap.Num() == 0) { return; }
+	for (const auto& Pair : ParamAliasMap)
+	{
+		if (Params->HasField(Pair.Key) && !Params->HasField(Pair.Value))
+		{
+			Params->SetField(Pair.Value, Params->TryGetField(Pair.Key));
+		}
+	}
+}
+
+FMCPToolResult FMCPToolBase::UnknownOperationError(const FString& Operation, const TArray<FString>& ValidOps)
+{
+	if (ValidOps.IsEmpty()) { return FMCPToolResult::Error(FString::Printf(TEXT("Unknown operation: '%s'"), *Operation)); }
+	auto LevenshteinDistance = [](const FString& A, const FString& B) -> int32
+	{
+		const int32 LenA = A.Len();
+		const int32 LenB = B.Len();
+		TArray<int32> Prev, Curr;
+		Prev.SetNumZeroed(LenB + 1);
+		Curr.SetNumZeroed(LenB + 1);
+		for (int32 j = 0; j <= LenB; j++) Prev[j] = j;
+		for (int32 i = 1; i <= LenA; i++)
+		{
+			Curr[0] = i;
+			for (int32 j = 1; j <= LenB; j++)
+			{
+				int32 Cost = (FChar::ToLower(A[i-1]) == FChar::ToLower(B[j-1])) ? 0 : 1;
+				Curr[j] = FMath::Min3(Prev[j] + 1, Curr[j-1] + 1, Prev[j-1] + Cost);
+			}
+			Swap(Prev, Curr);
+		}
+		return Prev[LenB];
+	};
+
+	FString ValidList;
+	FString ClosestMatch;
+	int32 BestDistance = MAX_int32;
+
+	for (const FString& Op : ValidOps)
+	{
+		if (!ValidList.IsEmpty())
+		{
+			ValidList += TEXT(", ");
+		}
+		ValidList += Op;
+
+		int32 Dist = LevenshteinDistance(Operation, Op);
+		if (Dist < BestDistance)
+		{
+			BestDistance = Dist;
+			ClosestMatch = Op;
+		}
+	}
+
+	FString Message = FString::Printf(TEXT("Unknown operation: '%s'. Valid: %s"), *Operation, *ValidList);
+
+	if (BestDistance <= 3 && !ClosestMatch.IsEmpty())
+	{
+		Message += FString::Printf(TEXT(" Did you mean '%s'?"), *ClosestMatch);
+	}
+
+	return FMCPToolResult::Error(Message);
 }

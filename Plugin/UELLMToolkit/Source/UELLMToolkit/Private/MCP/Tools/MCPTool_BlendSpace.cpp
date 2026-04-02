@@ -7,6 +7,11 @@
 // Helper: convert utility result JSON to FMCPToolResult
 static FMCPToolResult BlendSpaceJsonToToolResult(const TSharedPtr<FJsonObject>& Result, const FString& SuccessContext)
 {
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
+
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);
 
@@ -34,6 +39,12 @@ static FMCPToolResult BlendSpaceJsonToToolResult(const TSharedPtr<FJsonObject>& 
 
 FMCPToolResult FMCPTool_BlendSpace::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("blueprint_path"), TEXT("asset_path")},
+		{TEXT("path"), TEXT("asset_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
 	if (!ExtractRequiredString(Params, TEXT("operation"), Operation, Error))
@@ -42,6 +53,14 @@ FMCPToolResult FMCPTool_BlendSpace::Execute(const TSharedRef<FJsonObject>& Param
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("get"), TEXT("inspect")},
+		{TEXT("get_info"), TEXT("inspect")},
+		{TEXT("info"), TEXT("inspect")},
+		{TEXT("get_samples"), TEXT("inspect")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	// Read operations
 	if (Operation == TEXT("inspect"))
@@ -86,9 +105,7 @@ FMCPToolResult FMCPTool_BlendSpace::Execute(const TSharedRef<FJsonObject>& Param
 		return HandleBatch(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: '%s'. Valid: inspect, list, create, add_sample, remove_sample, move_sample, set_sample_animation, set_axis, save, batch"),
-		*Operation));
+	return UnknownOperationError(Operation, {TEXT("inspect"), TEXT("list"), TEXT("create"), TEXT("add_sample"), TEXT("remove_sample"), TEXT("move_sample"), TEXT("set_sample_animation"), TEXT("set_axis"), TEXT("save"), TEXT("batch")});
 }
 
 // ============================================================================
@@ -341,6 +358,10 @@ FMCPToolResult FMCPTool_BlendSpace::HandleBatch(const TSharedRef<FJsonObject>& P
 	}
 
 	TSharedPtr<FJsonObject> Result = FBlendSpaceEditor::ExecuteBatch(BS, *OpsArray);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Batch operation returned null result"));
+	}
 
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);

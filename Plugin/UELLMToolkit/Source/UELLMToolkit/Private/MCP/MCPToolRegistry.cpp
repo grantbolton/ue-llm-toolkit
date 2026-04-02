@@ -39,6 +39,11 @@
 #include "Tools/MCPTool_AnimEdit.h"
 #include "Tools/MCPTool_GameplayDebug.h"
 #include "Tools/MCPTool_Sequencer.h"
+#include "Tools/MCPTool_Niagara.h"
+#include "Tools/MCPTool_Lighting.h"
+#include "Tools/MCPTool_Audio.h"
+#include "Tools/MCPTool_MetaSound.h"
+#include "Tools/MCPTool_GameFramework.h"
 
 // Task queue tools
 #include "Tools/MCPTool_TaskSubmit.h"
@@ -144,6 +149,21 @@ void FMCPToolRegistry::RegisterBuiltinTools()
 
 	// Sequencer / Take Recorder tools
 	RegisterTool(MakeShared<FMCPTool_Sequencer>());
+
+	// Niagara particle system tools
+	RegisterTool(MakeShared<FMCPTool_Niagara>());
+
+	// Lighting and post-processing tools
+	RegisterTool(MakeShared<FMCPTool_Lighting>());
+
+	// Audio tools
+	RegisterTool(MakeShared<FMCPTool_Audio>());
+
+	// MetaSound graph tools
+	RegisterTool(MakeShared<FMCPTool_MetaSound>());
+
+	// Game framework tools
+	RegisterTool(MakeShared<FMCPTool_GameFramework>());
 
 	// Create and register async task queue tools
 	// Task queue takes a raw pointer since the registry always outlives it

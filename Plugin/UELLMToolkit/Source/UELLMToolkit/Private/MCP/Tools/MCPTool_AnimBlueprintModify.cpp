@@ -21,6 +21,12 @@
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("asset_path"), TEXT("blueprint_path")},
+		{TEXT("path"), TEXT("blueprint_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	// Extract required parameters
 	FString BlueprintPath;
 	TOptional<FMCPToolResult> Error;
@@ -41,7 +47,17 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::Execute(const TSharedRef<FJsonObjec
 		return Error.GetValue();
 	}
 
-	// Route to appropriate handler
+	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("inspect"), TEXT("get_info")},
+		{TEXT("info"), TEXT("get_info")},
+		{TEXT("get_graph"), TEXT("get_state_machine")},
+		{TEXT("list_states"), TEXT("get_state_machine")},
+		{TEXT("get_diagram"), TEXT("get_state_machine_diagram")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
+
 	if (Operation == TEXT("get_info"))
 	{
 		return HandleGetInfo(BlueprintPath);
@@ -202,7 +218,7 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::Execute(const TSharedRef<FJsonObjec
 		return HandleLayoutGraph(BlueprintPath, Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(TEXT("Unknown operation: %s"), *Operation));
+	return UnknownOperationError(Operation, {TEXT("get_info"), TEXT("get_state_machine"), TEXT("create_state_machine"), TEXT("add_state"), TEXT("remove_state"), TEXT("set_entry_state"), TEXT("add_transition"), TEXT("remove_transition"), TEXT("set_transition_duration"), TEXT("set_transition_priority"), TEXT("add_condition_node"), TEXT("delete_condition_node"), TEXT("connect_condition_nodes"), TEXT("connect_to_result"), TEXT("connect_state_machine_to_output"), TEXT("set_state_animation"), TEXT("add_anim_node"), TEXT("delete_anim_node"), TEXT("find_animations"), TEXT("batch"), TEXT("get_transition_nodes"), TEXT("inspect_node_pins"), TEXT("set_pin_default_value"), TEXT("add_comparison_chain"), TEXT("validate_blueprint"), TEXT("get_state_machine_diagram"), TEXT("get_anim_node_property"), TEXT("set_anim_node_property"), TEXT("setup_transition_conditions"), TEXT("list_layer_interfaces"), TEXT("list_layers"), TEXT("list_linked_layer_nodes"), TEXT("add_layer_interface"), TEXT("add_linked_layer_node"), TEXT("set_layer_instance"), TEXT("connect_anim_nodes"), TEXT("bind_variable"), TEXT("inspect_layer_graph"), TEXT("layout_graph")});
 }
 
 FVector2D FMCPTool_AnimBlueprintModify::ExtractPosition(const TSharedRef<FJsonObject>& Params)
@@ -211,8 +227,8 @@ FVector2D FMCPTool_AnimBlueprintModify::ExtractPosition(const TSharedRef<FJsonOb
 	const TSharedPtr<FJsonObject>* PosObj;
 	if (Params->TryGetObjectField(TEXT("position"), PosObj) && PosObj && (*PosObj).IsValid())
 	{
-		Position.X = (*PosObj)->GetNumberField(TEXT("x"));
-		Position.Y = (*PosObj)->GetNumberField(TEXT("y"));
+		(*PosObj)->TryGetNumberField(TEXT("x"), Position.X);
+		(*PosObj)->TryGetNumberField(TEXT("y"), Position.Y);
 	}
 	return Position;
 }
@@ -257,9 +273,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetStateMachine(const FString
 	}
 
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::SerializeStateMachineInfo(AnimBP, StateMachineName);
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -905,7 +925,9 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleBatch(const FString& Blueprin
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::ExecuteBatchOperations(
 		AnimBP, *Operations, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bBatchSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bBatchSuccess); }
+	if (!bBatchSuccess)
 	{
 		// Still return the partial results with the error
 		return FMCPToolResult::Success(TEXT("Batch operation completed with errors"), Result);
@@ -937,9 +959,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetTransitionNodes(const FStr
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::GetTransitionNodes(
 		AnimBP, StateMachineName, FromState, ToState, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -1179,9 +1205,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddComparisonChain(const FStr
 		AnimBP, StateMachineName, FromState, ToState,
 		VariableName, ComparisonType, CompareValue, Position, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bChainSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bChainSuccess); }
+	if (!bChainSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	FAnimationBlueprintUtils::CompileAnimBlueprint(AnimBP, Error);
@@ -1200,16 +1230,27 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleValidateBlueprint(const FStri
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::ValidateBlueprint(AnimBP, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bValSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bValSuccess); }
+	if (!bValSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
-	FString Message = Result->GetBoolField(TEXT("is_valid"))
+	bool bIsValid = false;
+	Result->TryGetBoolField(TEXT("is_valid"), bIsValid);
+	double ErrorCount = 0.0;
+	double WarningCount = 0.0;
+	Result->TryGetNumberField(TEXT("error_count"), ErrorCount);
+	Result->TryGetNumberField(TEXT("warning_count"), WarningCount);
+
+	FString Message = bIsValid
 		? TEXT("Blueprint is valid")
 		: FString::Printf(TEXT("Blueprint has %d error(s), %d warning(s)"),
-			static_cast<int32>(Result->GetNumberField(TEXT("error_count"))),
-			static_cast<int32>(Result->GetNumberField(TEXT("warning_count"))));
+			static_cast<int32>(ErrorCount),
+			static_cast<int32>(WarningCount));
 
 	return FMCPToolResult::Success(Message, Result);
 }
@@ -1224,7 +1265,8 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetStateMachineDiagram(
 		return ErrorResult.GetValue();
 	}
 
-	FString StateMachineName = Params->GetStringField(TEXT("state_machine"));
+	FString StateMachineName;
+	Params->TryGetStringField(TEXT("state_machine"), StateMachineName);
 	if (StateMachineName.IsEmpty())
 	{
 		return FMCPToolResult::Error(TEXT("state_machine parameter required"));
@@ -1233,13 +1275,15 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleGetStateMachineDiagram(
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimationBlueprintUtils::GetStateMachineDiagram(AnimBP, StateMachineName, Error);
 
-	if (!Result.IsValid() || !Result->GetBoolField(TEXT("success")))
+	bool bDiagSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bDiagSuccess); }
+	if (!bDiagSuccess)
 	{
 		return FMCPToolResult::Error(Error.IsEmpty() ? TEXT("Failed to generate diagram") : Error);
 	}
 
-	// Return ASCII diagram in message for easy viewing, with full JSON data
-	FString AsciiDiagram = Result->GetStringField(TEXT("ascii_diagram"));
+	FString AsciiDiagram;
+	Result->TryGetStringField(TEXT("ascii_diagram"), AsciiDiagram);
 	return FMCPToolResult::Success(AsciiDiagram, Result);
 }
 
@@ -1383,18 +1427,24 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetupTransitionConditions(
 		return FMCPToolResult::Error(Error.IsEmpty() ? TEXT("Failed to setup transition conditions") : Error);
 	}
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bCondSuccess = false;
+	Result->TryGetBoolField(TEXT("success"), bCondSuccess);
+	if (!bCondSuccess)
 	{
-		FString ErrorMsg = Result->HasField(TEXT("error"))
-			? Result->GetStringField(TEXT("error"))
-			: TEXT("Unknown error setting up transition conditions");
-		// Return partial results with error
+		FString ErrorMsg;
+		if (!Result->TryGetStringField(TEXT("error"), ErrorMsg) || ErrorMsg.IsEmpty())
+		{
+			ErrorMsg = TEXT("Unknown error setting up transition conditions");
+		}
 		return FMCPToolResult::Success(ErrorMsg, Result);
 	}
 
-	// Build success message with statistics
-	int32 RulesProcessed = static_cast<int32>(Result->GetNumberField(TEXT("rules_processed")));
-	int32 TransitionsModified = static_cast<int32>(Result->GetNumberField(TEXT("transitions_modified")));
+	double RulesProcessedVal = 0.0;
+	double TransitionsModifiedVal = 0.0;
+	Result->TryGetNumberField(TEXT("rules_processed"), RulesProcessedVal);
+	Result->TryGetNumberField(TEXT("transitions_modified"), TransitionsModifiedVal);
+	int32 RulesProcessed = static_cast<int32>(RulesProcessedVal);
+	int32 TransitionsModified = static_cast<int32>(TransitionsModifiedVal);
 
 	FString Message = FString::Printf(
 		TEXT("Setup transition conditions: %d rules processed, %d transitions modified"),
@@ -1416,9 +1466,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleListLayerInterfaces(const FSt
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::GetImplementedLayerInterfaces(AnimBP, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -1435,9 +1489,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleListLayers(const FString& Blu
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::GetAvailableLayers(AnimBP, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bLayerSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bLayerSuccess); }
+	if (!bLayerSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -1454,9 +1512,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleListLinkedLayerNodes(const FS
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::GetLinkedLayerNodes(AnimBP, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bLinkedSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bLinkedSuccess); }
+	if (!bLinkedSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -1479,12 +1541,18 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddLayerInterface(const FStri
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::AddLayerInterface(AnimBP, InterfacePath, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bIfaceSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bIfaceSuccess); }
+	if (!bIfaceSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
-	return FMCPToolResult::Success(Result->GetStringField(TEXT("message")), Result);
+	FString IfaceMsg;
+	Result->TryGetStringField(TEXT("message"), IfaceMsg);
+	return FMCPToolResult::Success(IfaceMsg, Result);
 }
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddLinkedLayerNode(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
@@ -1508,12 +1576,18 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddLinkedLayerNode(const FStr
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::CreateLinkedLayerNode(
 		AnimBP, LayerName, Position, InstanceClass, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
-	return FMCPToolResult::Success(Result->GetStringField(TEXT("message")), Result);
+	FString SuccessMsg;
+	Result->TryGetStringField(TEXT("message"), SuccessMsg);
+	return FMCPToolResult::Success(SuccessMsg, Result);
 }
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetLayerInstance(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
@@ -1540,12 +1614,18 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleSetLayerInstance(const FStrin
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::SetLinkedLayerInstance(
 		AnimBP, NodeId, InstanceClass, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
-	return FMCPToolResult::Success(Result->GetStringField(TEXT("message")), Result);
+	FString SuccessMsg;
+	Result->TryGetStringField(TEXT("message"), SuccessMsg);
+	return FMCPToolResult::Success(SuccessMsg, Result);
 }
 
 FMCPToolResult FMCPTool_AnimBlueprintModify::HandleConnectAnimNodes(const FString& BlueprintPath, const TSharedRef<FJsonObject>& Params)
@@ -1702,9 +1782,13 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleInspectLayerGraph(const FStri
 	FString Error;
 	TSharedPtr<FJsonObject> Result = FAnimLayerEditor::InspectLayerGraph(AnimBP, TargetGraphName, Error);
 
-	if (!Result->GetBoolField(TEXT("success")))
+	bool bSuccess = false;
+	if (Result.IsValid()) { Result->TryGetBoolField(TEXT("success"), bSuccess); }
+	if (!bSuccess)
 	{
-		return FMCPToolResult::Error(Result->GetStringField(TEXT("error")));
+		FString ErrorMsg;
+		if (Result.IsValid()) { Result->TryGetStringField(TEXT("error"), ErrorMsg); }
+		return FMCPToolResult::Error(ErrorMsg);
 	}
 
 	return FMCPToolResult::Success(TEXT("Operation completed"), Result);
@@ -1850,18 +1934,18 @@ FMCPToolResult FMCPTool_AnimBlueprintModify::HandleAddAnimNode(const FString& Bl
 		FRotator Rotation = FRotator::ZeroRotator;
 		if (const TSharedPtr<FJsonObject>* RotObj; Params->TryGetObjectField(TEXT("rotation"), RotObj))
 		{
-			Rotation.Pitch = (*RotObj)->GetNumberField(TEXT("pitch"));
-			Rotation.Yaw = (*RotObj)->GetNumberField(TEXT("yaw"));
-			Rotation.Roll = (*RotObj)->GetNumberField(TEXT("roll"));
+			(*RotObj)->TryGetNumberField(TEXT("pitch"), Rotation.Pitch);
+			(*RotObj)->TryGetNumberField(TEXT("yaw"), Rotation.Yaw);
+			(*RotObj)->TryGetNumberField(TEXT("roll"), Rotation.Roll);
 		}
 
 		// Parse translation (default: zero)
 		FVector Translation = FVector::ZeroVector;
 		if (const TSharedPtr<FJsonObject>* TransObj; Params->TryGetObjectField(TEXT("translation"), TransObj))
 		{
-			Translation.X = (*TransObj)->GetNumberField(TEXT("x"));
-			Translation.Y = (*TransObj)->GetNumberField(TEXT("y"));
-			Translation.Z = (*TransObj)->GetNumberField(TEXT("z"));
+			(*TransObj)->TryGetNumberField(TEXT("x"), Translation.X);
+			(*TransObj)->TryGetNumberField(TEXT("y"), Translation.Y);
+			(*TransObj)->TryGetNumberField(TEXT("z"), Translation.Z);
 		}
 
 		// Parse rotation_mode (default: additive)

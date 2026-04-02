@@ -105,7 +105,7 @@ UAnimGraphNode_StateMachine* FAnimStateMachineEditor::CreateStateMachine(
 
 	NodeCreator.Finalize();
 
-	UAnimationStateMachineGraph* SMGraph = CastChecked<UAnimationStateMachineGraph>(
+	UAnimationStateMachineGraph* SMGraph = Cast<UAnimationStateMachineGraph>(
 		FBlueprintEditorUtils::CreateNewGraph(
 			StateMachineNode,
 			NAME_None,
@@ -114,9 +114,15 @@ UAnimGraphNode_StateMachine* FAnimStateMachineEditor::CreateStateMachine(
 		)
 	);
 
+	if (!SMGraph)
+	{
+		OutError = TEXT("Failed to create state machine graph");
+		return nullptr;
+	}
+
 	StateMachineNode->EditorStateMachineGraph = SMGraph;
 
-	const UAnimationStateMachineSchema* Schema = CastChecked<UAnimationStateMachineSchema>(SMGraph->GetSchema());
+	const UAnimationStateMachineSchema* Schema = Cast<UAnimationStateMachineSchema>(SMGraph->GetSchema());
 	if (Schema)
 	{
 		Schema->CreateDefaultNodesForGraph(*SMGraph);
@@ -362,7 +368,7 @@ UAnimStateNode* FAnimStateMachineEditor::AddState(
 
 	// Create the bound graph (state's internal animation graph)
 	// Use UAnimationStateGraphSchema which properly initializes state graphs
-	UAnimationStateGraph* StateGraph = CastChecked<UAnimationStateGraph>(
+	UAnimationStateGraph* StateGraph = Cast<UAnimationStateGraph>(
 		FBlueprintEditorUtils::CreateNewGraph(
 			StateNode,
 			FName(*StateName),
@@ -370,11 +376,16 @@ UAnimStateNode* FAnimStateMachineEditor::AddState(
 			UAnimationStateGraphSchema::StaticClass()
 		)
 	);
+	if (!StateGraph)
+	{
+		OutError = TEXT("Failed to create state graph");
+		return nullptr;
+	}
 	StateNode->BoundGraph = StateGraph;
 
 	// CRITICAL: Create the result node (Output Animation Pose) in the state graph
 	// The schema's CreateDefaultNodesForGraph should handle this, but we ensure it exists
-	const UAnimationStateGraphSchema* Schema = CastChecked<UAnimationStateGraphSchema>(StateGraph->GetSchema());
+	const UAnimationStateGraphSchema* Schema = Cast<UAnimationStateGraphSchema>(StateGraph->GetSchema());
 	if (Schema)
 	{
 		Schema->CreateDefaultNodesForGraph(*StateGraph);
@@ -799,7 +810,7 @@ UAnimStateTransitionNode* FAnimStateMachineEditor::CreateTransition(
 	ConnectStateNodes(SourceState, TargetState, TransitionNode);
 
 	// Create the transition rule graph
-	UAnimationTransitionGraph* TransitionGraph = CastChecked<UAnimationTransitionGraph>(
+	UAnimationTransitionGraph* TransitionGraph = Cast<UAnimationTransitionGraph>(
 		FBlueprintEditorUtils::CreateNewGraph(
 			TransitionNode,
 			NAME_None,
@@ -807,10 +818,15 @@ UAnimStateTransitionNode* FAnimStateMachineEditor::CreateTransition(
 			UAnimationTransitionSchema::StaticClass()
 		)
 	);
+	if (!TransitionGraph)
+	{
+		OutError = TEXT("Failed to create transition graph");
+		return nullptr;
+	}
 	TransitionNode->BoundGraph = TransitionGraph;
 
 	// CRITICAL: Create the result node (bCanEnterTransition) in the transition graph
-	const UAnimationTransitionSchema* Schema = CastChecked<UAnimationTransitionSchema>(TransitionGraph->GetSchema());
+	const UAnimationTransitionSchema* Schema = Cast<UAnimationTransitionSchema>(TransitionGraph->GetSchema());
 	if (Schema)
 	{
 		Schema->CreateDefaultNodesForGraph(*TransitionGraph);

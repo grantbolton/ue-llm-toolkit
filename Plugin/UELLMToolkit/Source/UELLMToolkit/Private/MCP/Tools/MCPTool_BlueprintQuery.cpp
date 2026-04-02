@@ -12,6 +12,12 @@
 
 FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("asset_path"), TEXT("blueprint_path")},
+		{TEXT("path"), TEXT("blueprint_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	// Get operation type
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
@@ -21,6 +27,14 @@ FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& P
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("get_variables"), TEXT("inspect")},
+		{TEXT("get_info"), TEXT("inspect")},
+		{TEXT("info"), TEXT("inspect")},
+		{TEXT("get_properties"), TEXT("get_defaults")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	if (Operation == TEXT("list"))
 	{
@@ -83,8 +97,7 @@ FMCPToolResult FMCPTool_BlueprintQuery::Execute(const TSharedRef<FJsonObject>& P
 		return ExecuteGetExecChain(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: '%s'. Valid operations: 'list', 'inspect', 'get_graph', 'get_components', 'get_collision', 'get_event_graph', 'get_anim_graph', 'get_state_machine_detail', 'get_defaults', 'find_nodes', 'get_node', 'verify_connection', 'get_node_connections', 'get_graph_summary', 'get_exec_chain'"), *Operation));
+	return UnknownOperationError(Operation, {TEXT("list"), TEXT("inspect"), TEXT("get_graph"), TEXT("get_components"), TEXT("get_collision"), TEXT("get_event_graph"), TEXT("get_anim_graph"), TEXT("get_state_machine_detail"), TEXT("get_defaults"), TEXT("find_nodes"), TEXT("get_node"), TEXT("verify_connection"), TEXT("get_node_connections"), TEXT("get_graph_summary"), TEXT("get_exec_chain")});
 }
 
 FMCPToolResult FMCPTool_BlueprintQuery::ExecuteList(const TSharedRef<FJsonObject>& Params)
@@ -341,6 +354,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteGetComponents(const TSharedRef<FJ
 	}
 
 	TSharedPtr<FJsonObject> ComponentData = FComponentInspector::SerializeComponentTree(Blueprint);
+	if (!ComponentData)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("Failed to serialize component tree for '%s'"), *Blueprint->GetName()));
+	}
 
 	return FMCPToolResult::Success(
 		FString::Printf(TEXT("Component tree for: %s (%d components)"),
@@ -676,6 +693,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteFindNodes(const TSharedRef<FJsonO
 	FString GraphType = ExtractOptionalString(Params, TEXT("graph_type"));
 
 	TSharedPtr<FJsonObject> Result = FBlueprintGraphReader::FindNodes(Blueprint, Search, NodeClass, GraphName, GraphType);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("FindNodes returned null result for '%s'"), *Blueprint->GetName()));
+	}
 
 	int32 Count = static_cast<int32>(Result->GetNumberField(TEXT("count")));
 	return FMCPToolResult::Success(
@@ -774,6 +795,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteVerifyConnection(const TSharedRef
 
 	TSharedPtr<FJsonObject> Result = FBlueprintGraphReader::VerifyConnection(
 		Blueprint, SourceNodeId, TargetNodeId, SourcePin, TargetPin);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("VerifyConnection returned null result for '%s'"), *Blueprint->GetName()));
+	}
 
 	if (Result->HasField(TEXT("error")))
 	{
@@ -866,6 +891,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteGetGraphSummary(const TSharedRef<
 	FString GraphType = ExtractOptionalString(Params, TEXT("graph_type"));
 
 	TSharedPtr<FJsonObject> Result = FBlueprintGraphReader::GetGraphSummary(Blueprint, GraphName, GraphType);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("GetGraphSummary returned null result for '%s'"), *Blueprint->GetName()));
+	}
 
 	int32 GraphCount = static_cast<int32>(Result->GetNumberField(TEXT("graph_count")));
 	return FMCPToolResult::Success(
@@ -909,6 +938,10 @@ FMCPToolResult FMCPTool_BlueprintQuery::ExecuteGetExecChain(const TSharedRef<FJs
 	int32 MaxDepth = ExtractOptionalNumber<int32>(Params, TEXT("max_depth"), 50);
 
 	TSharedPtr<FJsonObject> Result = FBlueprintGraphReader::GetExecChain(Blueprint, NodeId, MaxDepth);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(FString::Printf(TEXT("GetExecChain returned null result for '%s'"), *Blueprint->GetName()));
+	}
 
 	if (Result->HasField(TEXT("error")))
 	{

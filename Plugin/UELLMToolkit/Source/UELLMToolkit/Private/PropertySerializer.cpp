@@ -136,6 +136,8 @@ TSharedPtr<FJsonValue> FPropertySerializer::StructToJsonValue(FStructProperty* S
 {
 	UScriptStruct* Struct = StructProp->Struct;
 
+	// reinterpret_casts below are safe: the FStructProperty type was already matched
+	// against the corresponding TBaseStructure<T> or FName, guaranteeing layout compatibility.
 	if (Struct == TBaseStructure<FVector>::Get() || Struct->GetFName() == FName("Vector"))
 	{
 		const FVector& Vec = *reinterpret_cast<const FVector*>(ValuePtr);

@@ -2,11 +2,7 @@
 
 #include "MCPTool_ControlRig.h"
 #include "ControlRigEditor.h"
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7
 #include "ControlRigBlueprintLegacy.h"
-#else
-#include "ControlRigBlueprint.h"
-#endif
 #include "RigVMModel/RigVMGraph.h"
 #include "RigVMModel/RigVMController.h"
 #include "MCP/MCPParamValidator.h"
@@ -25,6 +21,11 @@
 // Helper: convert utility result JSON to FMCPToolResult
 static FMCPToolResult JsonResultToToolResult(const TSharedPtr<FJsonObject>& Result, const FString& SuccessContext)
 {
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
+
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);
 
@@ -177,6 +178,10 @@ FMCPToolResult FMCPTool_ControlRig::HandleListStructs(const FString& RigPath, co
 
 	FString Filter = ExtractOptionalString(Params, TEXT("filter"));
 	TSharedPtr<FJsonObject> Result = FControlRigEditor::ListStructs(Controller, Filter);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
 
 	FString ErrorMsg;
 	if (Result->TryGetStringField(TEXT("error"), ErrorMsg))
@@ -196,6 +201,10 @@ FMCPToolResult FMCPTool_ControlRig::HandleListTemplates(const FString& RigPath, 
 
 	FString Filter = ExtractOptionalString(Params, TEXT("filter"));
 	TSharedPtr<FJsonObject> Result = FControlRigEditor::ListTemplates(Controller, Filter);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
 
 	FString ErrorMsg;
 	if (Result->TryGetStringField(TEXT("error"), ErrorMsg))
@@ -480,6 +489,10 @@ FMCPToolResult FMCPTool_ControlRig::HandleBatch(const FString& RigPath, const TS
 
 	TSharedPtr<FJsonObject> Result = FControlRigEditor::ExecuteBatch(
 		RigBP, Controller, *OpsArray);
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Batch operation returned null result"));
+	}
 
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);

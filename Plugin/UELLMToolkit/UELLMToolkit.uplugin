@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
-	"Version": 1,
-	"VersionName": "1.0.0",
+	"Version": 2,
+	"VersionName": "1.1.0",
 	"FriendlyName": "UE LLM Toolkit",
 	"Description": "HTTP REST API plugin for LLM-driven Unreal Engine editor automation. 38 tools, 201 operations — Blueprint editing, animation, materials, level management, and more.",
 	"Category": "Editor",
@@ -15,6 +15,7 @@
 	"IsExperimentalVersion": false,
 	"Installed": false,
 	"EnabledByDefault": true,
+	"EngineVersion": "5.7.0",
 	"SupportedTargetPlatforms": [ "Win64", "Linux" ],
 	"Modules": [
 		{
@@ -47,6 +48,14 @@
 		},
 		{
 			"Name": "LevelSequenceEditor",
+			"Enabled": true
+		},
+		{
+			"Name": "Niagara",
+			"Enabled": true
+		},
+		{
+			"Name": "Metasound",
 			"Enabled": true
 		}
 	]

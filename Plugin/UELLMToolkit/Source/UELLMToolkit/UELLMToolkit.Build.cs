@@ -99,7 +99,14 @@ public class UELLMToolkit : ModuleRules
 				"Sequencer",
 				"TakesCore",
 				"TakeRecorder",
-				"TakeRecorderSources"
+				"TakeRecorderSources",
+				// Niagara particle system inspection
+				"Niagara",
+				"NiagaraCore",
+				// MetaSound graph manipulation
+				"MetasoundEngine",
+				"MetasoundFrontend",
+				"MetasoundGraphCore"
 			}
 		);
 

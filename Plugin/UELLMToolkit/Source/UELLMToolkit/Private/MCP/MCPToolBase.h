@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "MCPToolRegistry.h"
+#include "MCPErrors.h"
 #include "MCPParamValidator.h"
 #include "UnrealClaudeUtils.h"
 
@@ -62,7 +63,7 @@ protected:
 	{
 		if (!Params->TryGetStringField(ParamName, OutValue) || OutValue.IsEmpty())
 		{
-			OutError = FMCPToolResult::Error(FString::Printf(TEXT("Missing required parameter: %s"), *ParamName));
+			OutError = FMCPErrors::MissingParameter(ParamName);
 			return false;
 		}
 		return true;
@@ -495,11 +496,19 @@ protected:
 
 		if (!ActorClass)
 		{
-			OutError = FMCPToolResult::Error(FString::Printf(TEXT("Could not find actor class: %s"), *ClassPath));
+			OutError = FMCPErrors::ClassNotFound(ClassPath);
 		}
 
 		return ActorClass;
 	}
+
+	// ===== Alias & Suggestion Helpers =====
+
+	static FString ResolveOperationAlias(const FString& Operation, const TMap<FString, FString>& AliasMap);
+
+	static void ResolveParamAliases(const TSharedRef<FJsonObject>& Params, const TMap<FString, FString>& ParamAliasMap);
+
+	static FMCPToolResult UnknownOperationError(const FString& Operation, const TArray<FString>& ValidOps);
 
 	// ===== Actor Result Helpers =====
 
@@ -510,7 +519,7 @@ protected:
 	 */
 	FMCPToolResult ActorNotFoundError(const FString& ActorName) const
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Actor not found: %s"), *ActorName));
+		return FMCPErrors::ActorNotFound(ActorName);
 	}
 
 	/**

@@ -175,6 +175,11 @@ FMCPToolResult FMCPTool_Sequencer::ExecuteGetState(const TSharedRef<FJsonObject>
 		return FMCPToolResult::Error(Error);
 	}
 
+	if (!State.IsValid())
+	{
+		return FMCPToolResult::Error(TEXT("GetSequencerState succeeded but returned null state"));
+	}
+
 	return FMCPToolResult::Success(TEXT("Sequencer state retrieved"), State);
 }
 

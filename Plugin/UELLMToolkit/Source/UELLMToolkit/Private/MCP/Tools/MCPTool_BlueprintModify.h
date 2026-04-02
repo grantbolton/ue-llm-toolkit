@@ -64,7 +64,13 @@ public:
 			"Node types: CallFunction, Branch, Event, EnhancedInputAction (action_path), VariableGet, VariableSet, Sequence, "
 			"PrintString, Add, Subtract, Multiply, Divide\n\n"
 			"Variable types: bool, int32, float, FString, FVector, FRotator, AActor*, UObject*, etc.\n\n"
-			"Returns: Operation result with created node IDs (for subsequent connections)."
+			"Returns: Operation result with created node IDs (for subsequent connections).\n\n"
+			"Quick Start:\n"
+			"  Add variable: {\"operation\":\"add_variable\",\"blueprint_path\":\"/Game/BP/MyBP\",\"variable_name\":\"Health\",\"variable_type\":\"float\"}\n"
+			"  Add node: {\"operation\":\"add_node\",\"blueprint_path\":\"/Game/BP/MyBP\",\"node_type\":\"CallFunction\",\"node_params\":{\"function\":\"PrintString\"}}\n"
+			"  Wire pins: {\"operation\":\"connect_pins\",\"blueprint_path\":\"/Game/BP/MyBP\",\"source_node_id\":\"<id>\",\"target_node_id\":\"<id>\"}\n"
+			"  Set CDO default: {\"operation\":\"set_cdo_default\",\"blueprint_path\":\"/Game/BP/MyBP\",\"property\":\"MaxWalkSpeed\",\"value\":600}\n"
+			"  Layout graph: {\"operation\":\"layout_graph\",\"blueprint_path\":\"/Game/BP/MyBP\"}"
 		);
 		Info.Parameters = {
 			// Operation selector

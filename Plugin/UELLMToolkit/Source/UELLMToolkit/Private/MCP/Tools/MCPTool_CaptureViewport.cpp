@@ -106,8 +106,10 @@ namespace
 		ResultData->SetNumberField(TEXT("original_width"), ViewportSize.X);
 		ResultData->SetNumberField(TEXT("original_height"), ViewportSize.Y);
 
+		// Camera metadata is only available for editor viewports (FEditorViewportClient).
+		// PIE viewports use UGameViewportClient which is a different hierarchy — skip the cast for PIE.
 		FViewportClient* Client = Viewport->GetClient();
-		if (Client)
+		if (Client && ViewportType != TEXT("PIE"))
 		{
 			FEditorViewportClient* EditorClient = static_cast<FEditorViewportClient*>(Client);
 			FVector CamLoc = EditorClient->GetViewLocation();
@@ -168,6 +170,8 @@ namespace
 			return false;
 		}
 
+		// Callers must ensure Viewport uses FEditorViewportClient (editor/asset viewports).
+		// PIE viewports use UGameViewportClient — do NOT call ApplyCamera on PIE viewports.
 		FEditorViewportClient* EditorClient = static_cast<FEditorViewportClient*>(Client);
 
 		if (bHasLocation && LocObj && LocObj->IsValid())
@@ -376,7 +380,9 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 				RequestedFrame, TargetTime, PlayLength);
 		}
 
-		FEditorViewportClient* EditorClient = static_cast<FEditorViewportClient*>(SceneViewport->GetClient());
+		// Asset editor viewports always use FEditorViewportClient — safe to cast
+		FViewportClient* RawClient = SceneViewport->GetClient();
+		FEditorViewportClient* EditorClient = RawClient ? static_cast<FEditorViewportClient*>(RawClient) : nullptr;
 
 		const TSharedPtr<FJsonObject>* TestLoc = nullptr;
 		const TSharedPtr<FJsonObject>* TestRot = nullptr;
@@ -412,7 +418,10 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 			Extra->SetStringField(TEXT("camera_preset"), CameraPreset.IsEmpty() ? TEXT("front") : CameraPreset);
 		}
 
-		EditorClient->Invalidate();
+		if (EditorClient)
+		{
+			EditorClient->Invalidate();
+		}
 		SceneViewport->Draw(false);
 		FlushRenderingCommands();
 
@@ -425,7 +434,10 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 				FSlateApplication::Get().Tick();
 				FlushRenderingCommands();
 
-				EditorClient->Invalidate();
+				if (EditorClient)
+				{
+					EditorClient->Invalidate();
+				}
 				SceneViewport->Draw(false);
 				FlushRenderingCommands();
 
@@ -456,7 +468,11 @@ FMCPToolResult FMCPTool_CaptureViewport::Execute(const TSharedRef<FJsonObject>& 
 	}
 
 	TSharedPtr<FJsonObject> Extra = MakeShared<FJsonObject>();
-	ApplyCamera(Viewport, Params, Extra);
+	// ApplyCamera uses FEditorViewportClient — only safe for editor viewports, not PIE
+	if (ViewportType != TEXT("PIE"))
+	{
+		ApplyCamera(Viewport, Params, Extra);
+	}
 
 	return CaptureFromViewport(Viewport, ViewportType, Extra->Values.Num() > 0 ? Extra : nullptr);
 }

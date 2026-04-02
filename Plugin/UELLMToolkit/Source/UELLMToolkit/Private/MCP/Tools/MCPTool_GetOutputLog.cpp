@@ -305,6 +305,21 @@ FMCPToolResult FMCPTool_GetOutputLog::Execute(const TSharedRef<FJsonObject>& Par
 		Reader->Close();
 
 		// Convert to FString (UTF-8 log file)
+		if (Buffer.Num() == 0)
+		{
+			LastReadOffset = FileSize;
+			LastLogFilePath = LogFilePath;
+
+			TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+			ResultData->SetStringField(TEXT("log_file"), LogFilePath);
+			ResultData->SetNumberField(TEXT("total_lines"), 0);
+			ResultData->SetNumberField(TEXT("returned_lines"), 0);
+			ResultData->SetNumberField(TEXT("cursor"), static_cast<double>(LastReadOffset));
+			ResultData->SetNumberField(TEXT("since_offset"), static_cast<double>(SinceOffset));
+			ResultData->SetNumberField(TEXT("new_bytes"), 0);
+			ResultData->SetStringField(TEXT("content"), TEXT(""));
+			return FMCPToolResult::Success(TEXT("No new log content since last read"), ResultData);
+		}
 		FUTF8ToTCHAR Converter(reinterpret_cast<const ANSICHAR*>(Buffer.GetData()), Buffer.Num());
 		LogContent = FString(Converter.Length(), Converter.Get());
 

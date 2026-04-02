@@ -67,7 +67,13 @@ public:
 			"  Params: asset_path (required), start_frame (required, 0-indexed inclusive),\n"
 			"  end_frame (required, 0-indexed inclusive, -1 = last frame),\n"
 			"  dest_path (optional: destination folder, default same as source),\n"
-			"  new_name (optional: asset name, default {Source}_F{start}_{end}), save (optional, default true)."
+			"  new_name (optional: asset name, default {Source}_F{start}_{end}), save (optional, default true).\n\n"
+			"Quick Start:\n"
+			"  Inspect bone: {\"operation\":\"inspect_track\",\"asset_path\":\"/Game/Anims/Walk\",\"bone_name\":\"root\",\"sample_frames\":[0,-1]}\n"
+			"  Adjust track: {\"operation\":\"adjust_track\",\"asset_paths\":[\"/Game/Anims/Walk\"],\"bone_name\":\"root\",\"location_offset\":{\"x\":0,\"y\":0,\"z\":5.0}}\n"
+			"  Get curves: {\"operation\":\"get_curves\",\"asset_path\":\"/Game/Anims/Walk\"}\n"
+			"  Extract range: {\"operation\":\"extract_range\",\"asset_path\":\"/Game/Anims/Combo\",\"start_frame\":0,\"end_frame\":30,\"new_name\":\"Combo_Hit1\"}\n"
+			"  Inspect mesh: {\"operation\":\"inspect_mesh\",\"mesh_path\":\"/Game/Characters/SK_Mannequin\"}"
 		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation name: 'adjust_track', 'inspect_track', 'resample', 'replace_skeleton', 'get_curves', 'add_curve', 'remove_curve', 'set_curve_keys', 'sync_mesh_bones', 'rename_bone', 'set_ref_pose', 'set_additive_type', 'transform_vertices', 'inspect_mesh', or 'extract_range'"), true),

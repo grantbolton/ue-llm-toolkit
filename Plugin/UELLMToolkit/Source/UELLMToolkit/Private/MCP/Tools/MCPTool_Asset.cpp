@@ -17,7 +17,7 @@
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
 #include "ObjectTools.h"
-#include "FileHelpers.h"
+#include "UObject/UObjectIterator.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Animation/AnimationAsset.h"
 #include "Animation/Skeleton.h"
@@ -26,7 +26,31 @@ FMCPToolInfo FMCPTool_Asset::GetInfo() const
 {
 	FMCPToolInfo Info;
 	Info.Name = TEXT("asset");
-	Info.Description = TEXT("Generic asset operations: set properties, save, and query assets in Content Browser");
+	Info.Description = TEXT(
+		"Generic asset operations — properties, save, query, rename, duplicate, delete, migrate.\n\n"
+		"Read Operations:\n"
+		"- 'get_asset_info': Asset metadata + optional editable property list. Params: asset_path; include_properties (default false)\n"
+		"- 'list_assets': List assets in folder by class. Params: directory, class_filter, recursive (default false), limit (default 25)\n"
+		"- 'get_hashes': Get content hashes for one or more assets (change detection)\n\n"
+		"Write Operations:\n"
+		"- 'set_asset_property': Set any editable UProperty on an asset. Params: asset_path, property (dot path), value\n"
+		"- 'save_asset': Save a single asset to disk. Params: asset_path\n"
+		"- 'save_all': Save all dirty assets\n"
+		"- 'rename': Rename or move asset. Params: asset_path, new_name and/or new_path\n"
+		"- 'duplicate': Copy asset. Params: asset_path, dest_path, new_name (optional)\n"
+		"- 'delete': Delete assets. Params: asset_paths (array), force (default false)\n"
+		"- 'create_folder': Create content folder. Params: folder_path\n"
+		"- 'rename_folder': Move folder. Params: folder_path, new_folder_path\n"
+		"- 'delete_folder': Remove empty folder. Params: folder_path\n"
+		"- 'migrate': Copy assets + dependencies to another project. Params: asset_paths, target_content_dir\n"
+		"- 'open_editor': Open asset in UE editor. Params: asset_path\n"
+		"- 'set_preview_mesh': Set preview mesh on an asset. Params: asset_path, mesh_path\n\n"
+		"Quick Start:\n"
+		"  List assets: {\"operation\":\"list_assets\",\"directory\":\"/Game/Animations\",\"class_filter\":\"AnimMontage\",\"recursive\":true}\n"
+		"  Get info: {\"operation\":\"get_asset_info\",\"asset_path\":\"/Game/Characters/SK_Hero\",\"include_properties\":true}\n"
+		"  Set property: {\"operation\":\"set_asset_property\",\"asset_path\":\"/Game/Characters/SK_Hero\",\"property\":\"bEnablePerPolyCollision\",\"value\":true}\n"
+		"  Save all: {\"operation\":\"save_all\"}"
+	);
 
 	// Parameters
 	Info.Parameters.Add(FMCPToolParameter(TEXT("operation"), TEXT("string"),
@@ -44,13 +68,13 @@ FMCPToolInfo FMCPTool_Asset::GetInfo() const
 
 	// save_asset params
 	Info.Parameters.Add(FMCPToolParameter(TEXT("save"), TEXT("boolean"),
-		TEXT("Actually save to disk (default: true)"), false));
+		TEXT("Actually save to disk (default: true)"), false, TEXT("true")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("mark_dirty"), TEXT("boolean"),
-		TEXT("Mark the asset as dirty (default: true if save is false)"), false));
+		TEXT("Mark the asset as dirty (default: true if save is false)"), false, TEXT("true")));
 
 	// get_asset_info params
 	Info.Parameters.Add(FMCPToolParameter(TEXT("include_properties"), TEXT("boolean"),
-		TEXT("Include editable property list (default: false)"), false));
+		TEXT("Include editable property list (default: false)"), false, TEXT("false")));
 
 	// list_assets params
 	Info.Parameters.Add(FMCPToolParameter(TEXT("directory"), TEXT("string"),
@@ -58,9 +82,9 @@ FMCPToolInfo FMCPTool_Asset::GetInfo() const
 	Info.Parameters.Add(FMCPToolParameter(TEXT("class_filter"), TEXT("string"),
 		TEXT("Filter by class name (e.g., SkeletalMesh, StaticMesh, Material)"), false));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("recursive"), TEXT("boolean"),
-		TEXT("Search recursively (default: false)"), false));
+		TEXT("Search recursively (default: false)"), false, TEXT("false")));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("limit"), TEXT("integer"),
-		TEXT("Maximum results (1-1000, default: 25)"), false));
+		TEXT("Maximum results (1-1000, default: 25)"), false, TEXT("25")));
 
 	// rename params
 	Info.Parameters.Add(FMCPToolParameter(TEXT("new_name"), TEXT("string"),
@@ -76,7 +100,7 @@ FMCPToolInfo FMCPTool_Asset::GetInfo() const
 	Info.Parameters.Add(FMCPToolParameter(TEXT("asset_paths"), TEXT("array"),
 		TEXT("Array of asset paths (delete: paths to delete; migrate: package paths to migrate)"), false));
 	Info.Parameters.Add(FMCPToolParameter(TEXT("force"), TEXT("boolean"),
-		TEXT("Force delete even if referenced (default: false)"), false));
+		TEXT("Force delete even if referenced (default: false)"), false, TEXT("false")));
 
 	// folder operation params
 	Info.Parameters.Add(FMCPToolParameter(TEXT("folder_path"), TEXT("string"),
@@ -103,6 +127,13 @@ FMCPToolInfo FMCPTool_Asset::GetInfo() const
 
 FMCPToolResult FMCPTool_Asset::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("blueprint_path"), TEXT("asset_path")},
+		{TEXT("path"), TEXT("asset_path")},
+		{TEXT("asset_class"), TEXT("class_filter")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
 	if (!ExtractRequiredString(Params, TEXT("operation"), Operation, Error))
@@ -111,6 +142,17 @@ FMCPToolResult FMCPTool_Asset::Execute(const TSharedRef<FJsonObject>& Params)
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("get_info"), TEXT("get_asset_info")},
+		{TEXT("info"), TEXT("get_asset_info")},
+		{TEXT("search"), TEXT("list_assets")},
+		{TEXT("find"), TEXT("list_assets")},
+		{TEXT("property"), TEXT("set_asset_property")},
+		{TEXT("save"), TEXT("save_all")},
+		{TEXT("list"), TEXT("list_assets")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	if (Operation == TEXT("set_asset_property"))
 	{
@@ -173,9 +215,7 @@ FMCPToolResult FMCPTool_Asset::Execute(const TSharedRef<FJsonObject>& Params)
 		return ExecuteSetPreviewMesh(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(
-		TEXT("Unknown operation: %s. Valid: set_asset_property, save_asset, get_asset_info, list_assets, rename, duplicate, delete, migrate, create_folder, rename_folder, delete_folder, get_hashes, save_all, open_editor, set_preview_mesh"),
-		*Operation));
+	return UnknownOperationError(Operation, {TEXT("set_asset_property"), TEXT("save_asset"), TEXT("get_asset_info"), TEXT("list_assets"), TEXT("rename"), TEXT("duplicate"), TEXT("delete"), TEXT("migrate"), TEXT("create_folder"), TEXT("rename_folder"), TEXT("delete_folder"), TEXT("get_hashes"), TEXT("save_all"), TEXT("open_editor"), TEXT("set_preview_mesh")});
 }
 
 FMCPToolResult FMCPTool_Asset::ExecuteSetAssetProperty(const TSharedRef<FJsonObject>& Params)
@@ -316,10 +356,11 @@ FMCPToolResult FMCPTool_Asset::ExecuteSaveAsset(const TSharedRef<FJsonObject>& P
 	if (bSave)
 	{
 		UPackage* Package = Asset->GetOutermost();
+		FString SaveExtension = Package->ContainsMap()
+			? FPackageName::GetMapPackageExtension()
+			: FPackageName::GetAssetPackageExtension();
 		FString PackageFileName = FPackageName::LongPackageNameToFilename(
-			Package->GetName(),
-			FPackageName::GetAssetPackageExtension()
-		);
+			Package->GetName(), SaveExtension);
 
 		FSavePackageArgs SaveArgs;
 		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
@@ -847,20 +888,74 @@ FMCPToolResult FMCPTool_Asset::ExecuteDeleteFolder(const TSharedRef<FJsonObject>
 
 FMCPToolResult FMCPTool_Asset::ExecuteSaveAll(const TSharedRef<FJsonObject>& Params)
 {
-	bool bResult = FEditorFileUtils::SaveDirtyPackages(
-		false,
-		true,
-		true);
+	int32 SavedCount = 0;
+	int32 FailedCount = 0;
+	TArray<FString> FailedPackages;
 
-	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
-	ResultData->SetBoolField(TEXT("success"), bResult);
-
-	if (bResult)
+	TArray<UPackage*> DirtyPackages;
+	for (TObjectIterator<UPackage> It; It; ++It)
 	{
-		return FMCPToolResult::Success(TEXT("Saved all dirty packages"), ResultData);
+		UPackage* Package = *It;
+		if (Package && Package->IsDirty() && !Package->HasAnyFlags(RF_Transient)
+			&& !Package->GetName().StartsWith(TEXT("/Temp/"))
+			&& !Package->GetName().StartsWith(TEXT("/Engine/")))
+		{
+			DirtyPackages.Add(Package);
+		}
 	}
 
-	return FMCPToolResult::Error(TEXT("SaveDirtyPackages failed"));
+	for (UPackage* Package : DirtyPackages)
+	{
+		FString SaveExtension = Package->ContainsMap()
+			? FPackageName::GetMapPackageExtension()
+			: FPackageName::GetAssetPackageExtension();
+		FString PackageFileName = FPackageName::LongPackageNameToFilename(
+			Package->GetName(), SaveExtension);
+
+		UObject* Asset = nullptr;
+		ForEachObjectWithOuter(Package, [&Asset](UObject* Obj) {
+			if (!Asset && Obj->IsAsset()) { Asset = Obj; }
+		});
+
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		FSavePackageResultStruct SaveResult = UPackage::Save(Package, Asset, *PackageFileName, SaveArgs);
+
+		if (SaveResult.IsSuccessful())
+		{
+			SavedCount++;
+		}
+		else
+		{
+			FailedCount++;
+			FailedPackages.Add(Package->GetName());
+		}
+	}
+
+	TSharedPtr<FJsonObject> ResultData = MakeShared<FJsonObject>();
+	ResultData->SetNumberField(TEXT("saved_count"), SavedCount);
+	ResultData->SetNumberField(TEXT("failed_count"), FailedCount);
+	ResultData->SetNumberField(TEXT("total_dirty"), DirtyPackages.Num());
+
+	if (FailedCount > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> FailedArr;
+		for (const FString& Name : FailedPackages)
+		{
+			FailedArr.Add(MakeShared<FJsonValueString>(Name));
+		}
+		ResultData->SetArrayField(TEXT("failed_packages"), FailedArr);
+	}
+
+	if (FailedCount > 0 && SavedCount == 0)
+	{
+		return FMCPToolResult::Error(
+			FString::Printf(TEXT("All %d packages failed to save"), FailedCount));
+	}
+
+	return FMCPToolResult::Success(
+		FString::Printf(TEXT("Saved %d/%d dirty packages"), SavedCount, DirtyPackages.Num()),
+		ResultData);
 }
 
 FMCPToolResult FMCPTool_Asset::ExecuteOpenEditor(const TSharedRef<FJsonObject>& Params)
@@ -989,7 +1084,12 @@ FMCPToolResult FMCPTool_Asset::ExecuteGetHashes(const TSharedRef<FJsonObject>& P
 		Entry->SetStringField(TEXT("path"), AssetPath);
 
 		FString DiskPath = FPackageName::LongPackageNameToFilename(
-			AssetPath, FPackageName::GetAssetPackageExtension());
+			AssetPath, FPackageName::GetMapPackageExtension());
+		if (!FPaths::FileExists(DiskPath))
+		{
+			DiskPath = FPackageName::LongPackageNameToFilename(
+				AssetPath, FPackageName::GetAssetPackageExtension());
+		}
 
 		IFileManager& FM = IFileManager::Get();
 		FDateTime MTime = FM.GetTimeStamp(*DiskPath);

@@ -6,6 +6,11 @@
 // Helper: convert utility result JSON to FMCPToolResult
 static FMCPToolResult RetargetJsonToToolResult(const TSharedPtr<FJsonObject>& Result, const FString& SuccessContext)
 {
+	if (!Result)
+	{
+		return FMCPToolResult::Error(TEXT("Operation returned null result"));
+	}
+
 	bool bSuccess = false;
 	Result->TryGetBoolField(TEXT("success"), bSuccess);
 

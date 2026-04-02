@@ -51,6 +51,10 @@ FMCPToolResult FMCPTool_DeleteActors::Execute(const TSharedRef<FJsonObject>& Par
 	{
 		for (const TSharedPtr<FJsonValue>& NameValue : *ActorNamesArray)
 		{
+			if (!NameValue.IsValid())
+			{
+				continue;
+			}
 			FString ActorName;
 			if (NameValue->TryGetString(ActorName))
 			{

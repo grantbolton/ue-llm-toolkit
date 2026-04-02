@@ -180,30 +180,31 @@ FMCPToolResult FMCPTool_CharacterData::ExecuteQueryCharacterData(const TSharedRe
 		if (SearchTags.Num() > 0)
 		{
 			UCharacterConfigDataAsset* Config = Cast<UCharacterConfigDataAsset>(AssetData.GetAsset());
-			if (Config)
+			if (!Config)
 			{
-				bool bHasAllTags = true;
-				for (const FString& SearchTag : SearchTags)
+				continue;
+			}
+			bool bHasAllTags = true;
+			for (const FString& SearchTag : SearchTags)
+			{
+				bool bFound = false;
+				for (const FName& Tag : Config->GameplayTags)
 				{
-					bool bFound = false;
-					for (const FName& Tag : Config->GameplayTags)
+					if (Tag.ToString().Contains(SearchTag))
 					{
-						if (Tag.ToString().Contains(SearchTag))
-						{
-							bFound = true;
-							break;
-						}
-					}
-					if (!bFound)
-					{
-						bHasAllTags = false;
+						bFound = true;
 						break;
 					}
 				}
-				if (!bHasAllTags)
+				if (!bFound)
 				{
-					continue;
+					bHasAllTags = false;
+					break;
 				}
+			}
+			if (!bHasAllTags)
+			{
+				continue;
 			}
 		}
 
@@ -728,8 +729,11 @@ bool FMCPTool_CharacterData::SaveAsset(UObject* Asset, FString& OutError)
 		return false;
 	}
 
+	FString SaveExtension = Package->ContainsMap()
+		? FPackageName::GetMapPackageExtension()
+		: FPackageName::GetAssetPackageExtension();
 	FString PackageFileName = FPackageName::LongPackageNameToFilename(
-		Package->GetName(), FPackageName::GetAssetPackageExtension());
+		Package->GetName(), SaveExtension);
 
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;

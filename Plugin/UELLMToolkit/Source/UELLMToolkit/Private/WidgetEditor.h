@@ -35,7 +35,37 @@ public:
 		const TSharedPtr<FJsonObject>& Properties);
 	static TSharedPtr<FJsonObject> SetSlotProperty(UWidgetBlueprint* WBP, const FString& WidgetName,
 		const TSharedPtr<FJsonObject>& SlotProperties);
+	static TSharedPtr<FJsonObject> SetBrush(UWidgetBlueprint* WBP, const FString& WidgetName,
+		const FString& BrushProperty, const TSharedPtr<FJsonObject>& BrushJson);
 	static TSharedPtr<FJsonObject> SaveWidgetBlueprint(UWidgetBlueprint* WBP);
+
+	// ===== Structural Operations =====
+
+	static TSharedPtr<FJsonObject> ReparentWidget(UWidgetBlueprint* WBP, const FString& WidgetName, const FString& NewParentName);
+	static TSharedPtr<FJsonObject> ReorderChild(UWidgetBlueprint* WBP, const FString& ParentName, const FString& ChildName, int32 NewIndex);
+	static TSharedPtr<FJsonObject> CloneWidget(UWidgetBlueprint* WBP, const FString& SourceWidgetName, const FString& NewName, const FString& TargetParentName);
+
+	// ===== Event Binding =====
+
+	static TSharedPtr<FJsonObject> ListWidgetEvents(const FString& AssetPath, const FString& WidgetName);
+	static TSharedPtr<FJsonObject> BindEvent(UWidgetBlueprint* WBP, const FString& WidgetName,
+		const FString& EventName, const FString& FunctionName);
+
+	// ===== Property Binding =====
+
+	static TSharedPtr<FJsonObject> BindProperty(UWidgetBlueprint* WBP, const FString& WidgetName,
+		const FString& PropertyName, const FString& FunctionName);
+	static TSharedPtr<FJsonObject> UnbindProperty(UWidgetBlueprint* WBP, const FString& WidgetName,
+		const FString& PropertyName);
+	static TSharedPtr<FJsonObject> ListBindings(const FString& AssetPath);
+
+	// ===== Animation Operations =====
+
+	static TSharedPtr<FJsonObject> ListAnimations(const FString& AssetPath);
+	static TSharedPtr<FJsonObject> InspectAnimation(const FString& AssetPath, const FString& AnimationName);
+	static TSharedPtr<FJsonObject> CreateAnimation(UWidgetBlueprint* WBP, const FString& AnimationName, float Length);
+	static TSharedPtr<FJsonObject> AddAnimationTrack(UWidgetBlueprint* WBP, const FString& AnimationName,
+		const FString& WidgetName, const FString& TrackType, const TArray<TSharedPtr<FJsonValue>>& Keyframes);
 
 	// ===== Batch =====
 

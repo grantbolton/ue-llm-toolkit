@@ -54,7 +54,13 @@ public:
 			"  Params: asset_path (required)\n\n"
 			"- 'batch': Multiple ops with single ResampleData at end. More efficient for multi-step setup.\n"
 			"  Params: asset_path (required), operations (array of {op, ...params})\n"
-			"  Valid batch ops: add_sample, remove_sample, move_sample, set_sample_animation, set_axis"
+			"  Valid batch ops: add_sample, remove_sample, move_sample, set_sample_animation, set_axis\n\n"
+			"Quick Start:\n"
+			"  Inspect: {\"operation\":\"inspect\",\"asset_path\":\"/Game/Anims/BS_Locomotion\"}\n"
+			"  Create 1D: {\"operation\":\"create\",\"package_path\":\"/Game/Anims\",\"name\":\"BS_Walk\",\"skeleton_path\":\"/Game/Characters/SK_Mannequin\",\"type\":\"BlendSpace1D\"}\n"
+			"  Add sample: {\"operation\":\"add_sample\",\"asset_path\":\"/Game/Anims/BS_Walk\",\"animation_path\":\"/Game/Anims/Walk\",\"x\":150.0,\"rate_scale\":-1.0}\n"
+			"  NOTE: rate_scale=-1.0 means use animation native play rate. 1.0=normal speed.\n"
+			"  Set axis: {\"operation\":\"set_axis\",\"asset_path\":\"/Game/Anims/BS_Walk\",\"axis_index\":0,\"axis_name\":\"Speed\",\"min\":0,\"max\":600,\"interp_type\":\"SpringDamper\",\"interp_time\":0.15,\"damping_ratio\":1.0}"
 		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: inspect, list, create, add_sample, remove_sample, move_sample, set_sample_animation, set_axis, save, batch"), true),
@@ -69,7 +75,7 @@ public:
 			FMCPToolParameter(TEXT("sample_index"), TEXT("number"), TEXT("Sample index")),
 			FMCPToolParameter(TEXT("x"), TEXT("number"), TEXT("X position"), false, TEXT("0")),
 			FMCPToolParameter(TEXT("y"), TEXT("number"), TEXT("Y position"), false, TEXT("0")),
-			FMCPToolParameter(TEXT("rate_scale"), TEXT("number"), TEXT("Per-sample playback speed multiplier (0.01-64.0, default 1.0)")),
+			FMCPToolParameter(TEXT("rate_scale"), TEXT("number"), TEXT("Per-sample playback speed multiplier (0.01-64.0, default 1.0, use -1.0 for animation native rate)"), false, TEXT("1.0")),
 			FMCPToolParameter(TEXT("axis_index"), TEXT("number"), TEXT("Axis index (0 or 1)")),
 			FMCPToolParameter(TEXT("axis_name"), TEXT("string"), TEXT("Axis display name")),
 			FMCPToolParameter(TEXT("min"), TEXT("number"), TEXT("Axis minimum value")),

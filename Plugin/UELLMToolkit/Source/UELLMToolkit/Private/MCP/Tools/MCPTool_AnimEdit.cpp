@@ -46,6 +46,12 @@ static FMCPToolResult AnimEditJsonToToolResult(const TSharedPtr<FJsonObject>& Re
 
 FMCPToolResult FMCPTool_AnimEdit::Execute(const TSharedRef<FJsonObject>& Params)
 {
+	static const TMap<FString, FString> ParamAliases = {
+		{TEXT("blueprint_path"), TEXT("asset_path")},
+		{TEXT("path"), TEXT("asset_path")}
+	};
+	ResolveParamAliases(Params, ParamAliases);
+
 	FString Operation;
 	TOptional<FMCPToolResult> Error;
 	if (!ExtractRequiredString(Params, TEXT("operation"), Operation, Error))
@@ -54,6 +60,14 @@ FMCPToolResult FMCPTool_AnimEdit::Execute(const TSharedRef<FJsonObject>& Params)
 	}
 
 	Operation = Operation.ToLower();
+
+	static const TMap<FString, FString> OpAliases = {
+		{TEXT("get_info"), TEXT("inspect_track")},
+		{TEXT("get_anim_info"), TEXT("inspect_track")},
+		{TEXT("inspect"), TEXT("inspect_track")},
+		{TEXT("info"), TEXT("inspect_track")}
+	};
+	Operation = ResolveOperationAlias(Operation, OpAliases);
 
 	if (Operation == TEXT("adjust_track"))
 	{
@@ -100,7 +114,7 @@ FMCPToolResult FMCPTool_AnimEdit::Execute(const TSharedRef<FJsonObject>& Params)
 		return HandleExtractRange(Params);
 	}
 
-	return FMCPToolResult::Error(FString::Printf(TEXT("Unknown operation: %s"), *Operation));
+	return UnknownOperationError(Operation, {TEXT("adjust_track"), TEXT("inspect_track"), TEXT("resample"), TEXT("replace_skeleton"), TEXT("sync_mesh_bones"), TEXT("rename_bone"), TEXT("set_ref_pose"), TEXT("set_additive_type"), TEXT("transform_vertices"), TEXT("inspect_mesh"), TEXT("extract_range")});
 }
 
 FMCPToolResult FMCPTool_AnimEdit::HandleAdjustTrack(const TSharedRef<FJsonObject>& Params)
@@ -911,12 +925,16 @@ FMCPToolResult FMCPTool_AnimEdit::HandleTransformVertices(const TSharedRef<FJson
 	if (bHasScale)
 	{
 		const TSharedPtr<FJsonObject>* ScaleObj;
-		if (Params->TryGetObjectField(TEXT("scale"), ScaleObj))
+		if (Params->TryGetObjectField(TEXT("scale"), ScaleObj) && ScaleObj && (*ScaleObj).IsValid())
 		{
 			FVector S;
-			S.X = (*ScaleObj)->GetNumberField(TEXT("x"));
-			S.Y = (*ScaleObj)->GetNumberField(TEXT("y"));
-			S.Z = (*ScaleObj)->GetNumberField(TEXT("z"));
+			double Sx = 1.0, Sy = 1.0, Sz = 1.0;
+			(*ScaleObj)->TryGetNumberField(TEXT("x"), Sx);
+			(*ScaleObj)->TryGetNumberField(TEXT("y"), Sy);
+			(*ScaleObj)->TryGetNumberField(TEXT("z"), Sz);
+			S.X = Sx;
+			S.Y = Sy;
+			S.Z = Sz;
 			UserTransform.SetScale3D(S);
 		}
 		else

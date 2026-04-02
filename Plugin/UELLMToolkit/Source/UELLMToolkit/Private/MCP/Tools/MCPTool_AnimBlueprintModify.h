@@ -120,11 +120,17 @@ public:
 			"- 'inspect_layer_graph': List nodes in layer function graph (target_graph required)\n\n"
 			"Layout:\n"
 			"- 'layout_graph': Auto-arrange nodes into readable BFS grid layout (AnimGraph or state-bound graph)\n\n"
-			"- 'batch': Execute multiple operations atomically"
+			"- 'batch': Execute multiple operations atomically\n\n"
+			"Quick Start:\n"
+			"  Get info: {\"operation\":\"get_info\",\"blueprint_path\":\"/Game/ABP/ABP_Char\"}\n"
+			"  Add state: {\"operation\":\"add_state\",\"blueprint_path\":\"/Game/ABP/ABP_Char\",\"state_machine\":\"Locomotion\",\"state_name\":\"Idle\"}\n"
+			"  Set anim: {\"operation\":\"set_state_animation\",\"blueprint_path\":\"/Game/ABP/ABP_Char\",\"state_machine\":\"SM\",\"state_name\":\"Walk\",\"animation_type\":\"blendspace1d\",\"animation_path\":\"/Game/Anims/BS_Walk\",\"parameter_bindings\":{\"X\":\"Speed\"}}\n"
+			"  Transition condition: {\"operation\":\"add_comparison_chain\",\"blueprint_path\":\"/Game/ABP/ABP_Char\",\"state_machine\":\"SM\",\"from_state\":\"Idle\",\"to_state\":\"Walk\",\"variable_name\":\"Speed\",\"comparison_type\":\"Greater\",\"compare_value\":\"10.0\"}\n"
+			"  Connect anim nodes: {\"operation\":\"connect_anim_nodes\",\"blueprint_path\":\"/Game/ABP/ABP_Char\",\"source_node_id\":\"<id>\",\"target_node_id\":\"<id>\"}"
 		);
 		Info.Parameters = {
 			FMCPToolParameter(TEXT("blueprint_path"), TEXT("string"), TEXT("Path to the Animation Blueprint (e.g., '/Game/Characters/ABP_Character')"), true),
-			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: get_info, get_state_machine, get_state_machine_diagram, create_state_machine, add_state, remove_state, set_entry_state, add_transition, remove_transition, set_transition_duration, set_transition_priority, add_condition_node, delete_condition_node, connect_condition_nodes, connect_to_result, connect_state_machine_to_output, set_state_animation, get_anim_node_property, set_anim_node_property, add_anim_node, delete_anim_node, find_animations, batch, get_transition_nodes, inspect_node_pins, set_pin_default_value, add_comparison_chain, validate_blueprint, list_layer_interfaces, list_layers, list_linked_layer_nodes, add_layer_interface, add_linked_layer_node, set_layer_instance, connect_anim_nodes, bind_variable, inspect_layer_graph, layout_graph"), true),
+			FMCPToolParameter(TEXT("operation"), TEXT("string"), TEXT("Operation: get_info, get_state_machine, get_state_machine_diagram, create_state_machine, add_state, remove_state, set_entry_state, add_transition, remove_transition, set_transition_duration, set_transition_priority, add_condition_node, delete_condition_node, connect_condition_nodes, connect_to_result, connect_state_machine_to_output, set_state_animation, get_anim_node_property, set_anim_node_property, add_anim_node, delete_anim_node, find_animations, batch, get_transition_nodes, inspect_node_pins, set_pin_default_value, add_comparison_chain, validate_blueprint, list_layer_interfaces, list_layers, list_linked_layer_nodes, add_layer_interface, add_linked_layer_node, set_layer_instance, connect_anim_nodes, bind_variable, inspect_layer_graph, layout_graph, setup_transition_conditions"), true),
 			FMCPToolParameter(TEXT("state_machine"), TEXT("string"), TEXT("State machine name (for state/transition operations)"), false),
 			FMCPToolParameter(TEXT("state_name"), TEXT("string"), TEXT("State name (for state operations)"), false),
 			FMCPToolParameter(TEXT("from_state"), TEXT("string"), TEXT("Source state name (for transitions)"), false),

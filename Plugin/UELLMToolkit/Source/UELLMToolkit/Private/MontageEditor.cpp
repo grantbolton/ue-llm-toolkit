@@ -78,8 +78,11 @@ bool FMontageEditor::SaveMontage(UAnimMontage* Montage, FString& OutError)
 		return false;
 	}
 
+	FString SaveExtension = Package->ContainsMap()
+		? FPackageName::GetMapPackageExtension()
+		: FPackageName::GetAssetPackageExtension();
 	FString PackageFileName;
-	if (!FPackageName::TryConvertLongPackageNameToFilename(Package->GetName(), PackageFileName, FPackageName::GetAssetPackageExtension()))
+	if (!FPackageName::TryConvertLongPackageNameToFilename(Package->GetName(), PackageFileName, SaveExtension))
 	{
 		OutError = FString::Printf(TEXT("Failed to resolve filename for package: %s"), *Package->GetName());
 		return false;
@@ -133,10 +136,11 @@ TSharedPtr<FJsonObject> FMontageEditor::SerializeMontageInfo(UAnimMontage* Monta
 			const FAnimSegment& Seg = SlotTrack.AnimTrack.AnimSegments[SegIdx];
 			TSharedPtr<FJsonObject> SegJson = MakeShared<FJsonObject>();
 			SegJson->SetNumberField(TEXT("index"), SegIdx);
-			if (Seg.GetAnimReference())
+			UAnimationAsset* AnimRef = Seg.GetAnimReference();
+			if (AnimRef)
 			{
-				SegJson->SetStringField(TEXT("animation"), Seg.GetAnimReference()->GetPathName());
-				SegJson->SetStringField(TEXT("animation_name"), Seg.GetAnimReference()->GetName());
+				SegJson->SetStringField(TEXT("animation"), AnimRef->GetPathName());
+				SegJson->SetStringField(TEXT("animation_name"), AnimRef->GetName());
 			}
 			SegJson->SetNumberField(TEXT("start_pos"), Seg.StartPos);
 			SegJson->SetNumberField(TEXT("anim_start_time"), Seg.AnimStartTime);

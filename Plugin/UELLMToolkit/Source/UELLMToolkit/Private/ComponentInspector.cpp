@@ -103,15 +103,16 @@ TSharedPtr<FJsonObject> FComponentInspector::SerializeComponentTree(UBlueprint* 
 	TMap<USceneComponent*, TArray<USceneComponent*>> ChildrenMap;
 	for (USceneComponent* Comp : SceneComponents)
 	{
-		if (Comp != RootComp)
+		if (!Comp || Comp == RootComp)
 		{
-			USceneComponent* Parent = Comp->GetAttachParent();
-			if (!Parent)
-			{
-				Parent = RootComp;
-			}
-			ChildrenMap.FindOrAdd(Parent).Add(Comp);
+			continue;
 		}
+		USceneComponent* Parent = Comp->GetAttachParent();
+		if (!Parent)
+		{
+			Parent = RootComp;
+		}
+		ChildrenMap.FindOrAdd(Parent).Add(Comp);
 	}
 
 	// Build native scene component tree

@@ -113,27 +113,27 @@ public:
 
 	static FMCPToolResult ActorNotFound(const FString& ActorName)
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Actor not found: %s"), *ActorName));
+		return FMCPToolResult::Error(FString::Printf(TEXT("Actor not found: %s. Use level_query find to search for actors in the current level"), *ActorName));
 	}
 
 	static FMCPToolResult ActorsNotFound(const TArray<FString>& ActorNames)
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Actors not found: %s"), *FString::Join(ActorNames, TEXT(", "))));
+		return FMCPToolResult::Error(FString::Printf(TEXT("Actors not found: %s. Use level_query find to search for actors in the current level"), *FString::Join(ActorNames, TEXT(", "))));
 	}
 
 	static FMCPToolResult BlueprintNotFound(const FString& Path)
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Blueprint not found: %s"), *Path));
+		return FMCPToolResult::Error(FString::Printf(TEXT("Blueprint not found: %s. Use asset tool list_assets or asset_search to find available blueprints"), *Path));
 	}
 
 	static FMCPToolResult ClassNotFound(const FString& ClassName)
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Class not found: %s"), *ClassName));
+		return FMCPToolResult::Error(FString::Printf(TEXT("Class not found: %s. For Blueprint classes, append '_C' suffix (e.g., 'BP_MyActor_C')"), *ClassName));
 	}
 
 	static FMCPToolResult PropertyNotFound(const FString& PropertyPath, const FString& ObjectName)
 	{
-		return FMCPToolResult::Error(FString::Printf(TEXT("Property '%s' not found on %s"), *PropertyPath, *ObjectName));
+		return FMCPToolResult::Error(FString::Printf(TEXT("Property '%s' not found on %s. Check property path with blueprint_query inspect or level_query info"), *PropertyPath, *ObjectName));
 	}
 
 	static FMCPToolResult FunctionNotFound(const FString& FunctionName)
@@ -192,12 +192,12 @@ public:
 
 	static FMCPToolResult EditorNotAvailable()
 	{
-		return FMCPToolResult::Error(TEXT("Editor not available"));
+		return FMCPToolResult::Error(TEXT("Editor not available. Is the Unreal Editor running with UELLMToolkit plugin loaded?"));
 	}
 
 	static FMCPToolResult NoActiveWorld()
 	{
-		return FMCPToolResult::Error(TEXT("No active world"));
+		return FMCPToolResult::Error(TEXT("No active world. Open a level in the editor first"));
 	}
 
 	static FMCPToolResult ViewportNotAvailable()
@@ -220,7 +220,7 @@ public:
 
 	static void SetActorNotFound(FString& OutError, const FString& ActorName)
 	{
-		OutError = FString::Printf(TEXT("Actor not found: %s"), *ActorName);
+		OutError = FString::Printf(TEXT("Actor not found: %s. Use level_query find to search for actors in the current level"), *ActorName);
 	}
 
 	static void SetNotFound(FString& OutError, const FString& ObjectType, const FString& Name)

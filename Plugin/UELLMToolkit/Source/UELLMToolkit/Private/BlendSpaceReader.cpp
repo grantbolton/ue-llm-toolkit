@@ -169,15 +169,11 @@ TSharedPtr<FJsonObject> FBlendSpaceReader::InspectBlendSpace(const FString& Asse
 		SampleObj->SetObjectField(TEXT("position"), PosObj);
 
 		SampleObj->SetNumberField(TEXT("rate_scale"), Sample.RateScale);
-#if ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 7
 		SampleObj->SetBoolField(TEXT("single_frame"), Sample.bUseSingleFrameForBlending);
-		if (Sample.bUseSingleFrameForBlending && IsValid(Sample.Animation))
+		if (Sample.bUseSingleFrameForBlending)
 		{
 			SampleObj->SetNumberField(TEXT("frame_index"), (double)Sample.FrameIndexToSample);
 		}
-#elif ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION == 6
-		SampleObj->SetBoolField(TEXT("single_frame"), false);
-#endif
 
 		SamplesArray.Add(MakeShared<FJsonValueObject>(SampleObj));
 	}

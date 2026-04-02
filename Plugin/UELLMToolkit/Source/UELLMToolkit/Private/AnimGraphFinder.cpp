@@ -22,6 +22,7 @@ UEdGraph* FAnimGraphFinder::FindAnimGraph(UAnimBlueprint* AnimBP, FString& OutEr
 
 	for (UEdGraph* Graph : AllGraphs)
 	{
+		if (!Graph) continue;
 		if (Graph->IsA<UAnimationGraph>())
 		{
 			return Graph;

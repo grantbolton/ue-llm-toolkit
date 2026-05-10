@@ -20,7 +20,9 @@
  * - Flow: Branch, Sequence
  * - Functions: CallFunction, PrintString
  * - Variables: VariableGet, VariableSet
- * - Events: Event (BeginPlay, Tick, EndPlay), EnhancedInputAction
+ * - Events: Event (BeginPlay, Tick, EndPlay), CustomEvent, ComponentBoundEvent, EnhancedInputAction
+ * - References: Self, Cast (DynamicCast)
+ * - Structs: MakeStruct, BreakStruct
  * - Math: Add, Subtract, Multiply, Divide
  *
  * Node ID System:
@@ -219,10 +221,16 @@ private:
 	static UEdGraphNode* CreateCallFunctionNode(UEdGraph* Graph, const FString& FunctionName, const FString& TargetClass, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateBranchNode(UEdGraph* Graph, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateEventNode(UEdGraph* Graph, const FString& EventName, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateCustomEventNode(UEdGraph* Graph, const FString& EventName, const TSharedPtr<FJsonObject>& Params, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateComponentBoundEventNode(UEdGraph* Graph, UBlueprint* Blueprint, const FString& ComponentName, const FString& DelegateName, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateVariableGetNode(UEdGraph* Graph, UBlueprint* Blueprint, const FString& VariableName, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateVariableSetNode(UEdGraph* Graph, UBlueprint* Blueprint, const FString& VariableName, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateSequenceNode(UEdGraph* Graph, int32 NumOutputs, int32 PosX, int32 PosY, FString& OutError);
 	static UEdGraphNode* CreateMathNode(UEdGraph* Graph, const FString& MathOp, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateSelfNode(UEdGraph* Graph, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateCastNode(UEdGraph* Graph, const FString& TargetClass, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateMakeStructNode(UEdGraph* Graph, const FString& StructType, int32 PosX, int32 PosY, FString& OutError);
+	static UEdGraphNode* CreateBreakStructNode(UEdGraph* Graph, const FString& StructType, int32 PosX, int32 PosY, FString& OutError);
 
 	// Enhanced Input node creation
 	static UEdGraphNode* CreateEnhancedInputActionNode(UEdGraph* Graph, const FString& ActionPath, int32 PosX, int32 PosY, FString& OutError);

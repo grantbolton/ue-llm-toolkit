@@ -1975,4 +1975,338 @@ bool FMCPToolRegistry_EnhancedInputRegistered::RunTest(const FString& Parameters
 	return true;
 }
 
+// ===== Blueprint Graph Editor — node creation tests =====
+// Exercise the new dispatcher branches added for SCS components, FindFirstObject
+// class lookup, CustomEvent, ComponentBoundEvent, Self, Cast, MakeStruct, BreakStruct.
+
+#include "BlueprintGraphEditor.h"
+#include "BlueprintLoader.h"
+#include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_Self.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_BreakStruct.h"
+#include "K2Node_CallFunction.h"
+#include "K2Node_VariableGet.h"
+#include "GameFramework/Actor.h"
+#include "Components/StaticMeshComponent.h"
+#include "Components/PrimitiveComponent.h"
+
+namespace BPGraphEditorTests
+{
+	static UBlueprint* CreateTransientActorBlueprint()
+	{
+		const FString BPName = FString::Printf(TEXT("BPTest_%d_%d"),
+			FPlatformTime::Cycles(), FMath::Rand());
+		UBlueprint* BP = FKismetEditorUtilities::CreateBlueprint(
+			AActor::StaticClass(),
+			GetTransientPackage(),
+			*BPName,
+			BPTYPE_Normal,
+			UBlueprint::StaticClass(),
+			UBlueprintGeneratedClass::StaticClass()
+		);
+		return BP;
+	}
+
+	static UEdGraph* GetEventGraph(UBlueprint* BP)
+	{
+		if (!BP || BP->UbergraphPages.Num() == 0) return nullptr;
+		return BP->UbergraphPages[0];
+	}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CreateSelfNode,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CreateSelfNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CreateSelfNode::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	TestNotNull("Should create transient BP", BP);
+	if (!BP) return false;
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	TestNotNull("Should have event graph", Graph);
+	if (!Graph) return false;
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("Self"), nullptr, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(Self) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	TestTrue("Should be UK2Node_Self", Node && Node->IsA<UK2Node_Self>());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CreateCustomEvent,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CreateCustomEvent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CreateCustomEvent::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("event_name"), TEXT("MyTestEvent"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("CustomEvent"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(CustomEvent) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	UK2Node_CustomEvent* Custom = Cast<UK2Node_CustomEvent>(Node);
+	TestNotNull("Should be UK2Node_CustomEvent", Custom);
+	if (Custom)
+	{
+		TestEqual("CustomFunctionName should match", Custom->CustomFunctionName, FName("MyTestEvent"));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CustomEventMissingName,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CustomEventMissingName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CustomEventMissingName::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("CustomEvent"), nullptr, 0, 0, OutNodeId, OutError);
+	TestNull("Should fail with no event_name", Node);
+	TestTrue("Error should mention event_name", OutError.Contains(TEXT("event_name")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CallFunctionFindFirstObject,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CallFunctionFindFirstObject",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CallFunctionFindFirstObject::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	// Patch 2: should resolve a class outside the 5-library hardcoded list.
+	// AddImpulse lives on UPrimitiveComponent — previously unfindable.
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("function"), TEXT("AddImpulse"));
+	Params->SetStringField(TEXT("target_class"), TEXT("PrimitiveComponent"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("CallFunction"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(CallFunction AddImpulse) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	UK2Node_CallFunction* CallNode = Cast<UK2Node_CallFunction>(Node);
+	TestNotNull("Should be UK2Node_CallFunction", CallNode);
+	if (CallNode)
+	{
+		const UFunction* Fn = CallNode->GetTargetFunction();
+		TestNotNull("Should have a target function", Fn);
+		if (Fn)
+		{
+			TestEqual("Function name should be AddImpulse", Fn->GetFName(), FName("AddImpulse"));
+		}
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CreateCastNode,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CreateCastNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CreateCastNode::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	// 'Actor' (no prefix) should resolve via the A-prefix retry.
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("target_class"), TEXT("Actor"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("Cast"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(Cast Actor) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	UK2Node_DynamicCast* CastNode = Cast<UK2Node_DynamicCast>(Node);
+	TestNotNull("Should be UK2Node_DynamicCast", CastNode);
+	if (CastNode)
+	{
+		TestEqual("TargetType should be AActor", CastNode->TargetType.Get(), AActor::StaticClass());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CreateMakeStructNode,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CreateMakeStructNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CreateMakeStructNode::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	// 'Vector' (no F prefix) should resolve via the F-prefix retry.
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("struct_type"), TEXT("Vector"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("MakeStruct"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(MakeStruct Vector) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	UK2Node_MakeStruct* MakeNode = Cast<UK2Node_MakeStruct>(Node);
+	TestNotNull("Should be UK2Node_MakeStruct", MakeNode);
+	if (MakeNode)
+	{
+		TestEqual("StructType should be FVector", MakeNode->StructType.Get(), TBaseStructure<FVector>::Get());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_CreateBreakStructNode,
+	"UnrealClaude.MCP.Tools.BlueprintModify.CreateBreakStructNode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_CreateBreakStructNode::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("struct_type"), TEXT("HitResult"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("BreakStruct"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull("CreateNode(BreakStruct HitResult) should succeed", Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	UK2Node_BreakStruct* BreakNode = Cast<UK2Node_BreakStruct>(Node);
+	TestNotNull("Should be UK2Node_BreakStruct", BreakNode);
+	if (BreakNode)
+	{
+		TestEqual("StructType should be FHitResult", BreakNode->StructType.Get(), TBaseStructure<FHitResult>::Get());
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_VariableGetSCSComponent,
+	"UnrealClaude.MCP.Tools.BlueprintModify.VariableGetSCSComponent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_VariableGetSCSComponent::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	TestNotNull("Should create transient BP", BP);
+	if (!BP) return false;
+
+	// Add an SCS component named "Cube" — this is the case Patch 1 unblocks.
+	USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+	TestNotNull("BP should have SCS", SCS);
+	if (!SCS) return false;
+
+	USCS_Node* CompNode = SCS->CreateNode(UStaticMeshComponent::StaticClass(), FName("Cube"));
+	TestNotNull("SCS->CreateNode should succeed", CompNode);
+	if (!CompNode) return false;
+	SCS->AddNode(CompNode);
+
+	FString CompileError;
+	const bool bCompiled = FBlueprintLoader::CompileBlueprint(BP, CompileError);
+	TestTrue(FString::Printf(TEXT("BP should compile (err=%s)"), *CompileError), bCompiled);
+
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("variable"), TEXT("Cube"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("VariableGet"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull(FString::Printf(TEXT("VariableGet on SCS component should succeed (err=%s)"), *OutError), Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	TestTrue("Should be UK2Node_VariableGet", Node && Node->IsA<UK2Node_VariableGet>());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_ComponentBoundEventMissingComponent,
+	"UnrealClaude.MCP.Tools.BlueprintModify.ComponentBoundEventMissingComponent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_ComponentBoundEventMissingComponent::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("component"), TEXT("DoesNotExist"));
+	Params->SetStringField(TEXT("delegate"), TEXT("OnComponentHit"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("ComponentBoundEvent"), Params, 0, 0, OutNodeId, OutError);
+	TestNull("Should fail when component missing", Node);
+	TestTrue("Error should mention the component name", OutError.Contains(TEXT("DoesNotExist")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FMCPTool_BlueprintModify_ComponentBoundEventHitDelegate,
+	"UnrealClaude.MCP.Tools.BlueprintModify.ComponentBoundEventHitDelegate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter
+)
+
+bool FMCPTool_BlueprintModify_ComponentBoundEventHitDelegate::RunTest(const FString& Parameters)
+{
+	UBlueprint* BP = BPGraphEditorTests::CreateTransientActorBlueprint();
+	if (!BP) return false;
+
+	USimpleConstructionScript* SCS = BP->SimpleConstructionScript;
+	if (!SCS) return false;
+	USCS_Node* CompNode = SCS->CreateNode(UStaticMeshComponent::StaticClass(), FName("Cube"));
+	if (!CompNode) return false;
+	SCS->AddNode(CompNode);
+
+	FString CompileError;
+	FBlueprintLoader::CompileBlueprint(BP, CompileError);
+
+	UEdGraph* Graph = BPGraphEditorTests::GetEventGraph(BP);
+	if (!Graph) return false;
+
+	TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
+	Params->SetStringField(TEXT("component"), TEXT("Cube"));
+	Params->SetStringField(TEXT("delegate"), TEXT("OnComponentHit"));
+
+	FString OutNodeId, OutError;
+	UEdGraphNode* Node = FBlueprintGraphEditor::CreateNode(Graph, TEXT("ComponentBoundEvent"), Params, 0, 0, OutNodeId, OutError);
+	TestNotNull(FString::Printf(TEXT("ComponentBoundEvent for OnComponentHit should succeed (err=%s)"), *OutError), Node);
+	TestTrue("Error should be empty", OutError.IsEmpty());
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

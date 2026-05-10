@@ -10,6 +10,12 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 #include "K2Node_ExecutionSequence.h"
+#include "K2Node_CustomEvent.h"
+#include "K2Node_ComponentBoundEvent.h"
+#include "K2Node_Self.h"
+#include "K2Node_DynamicCast.h"
+#include "K2Node_MakeStruct.h"
+#include "K2Node_BreakStruct.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -146,6 +152,42 @@ UEdGraphNode* FBlueprintGraphEditor::CreateNode(
 		Context = EventName;
 		NewNode = CreateEventNode(Graph, EventName, PosX, PosY, OutError);
 	}
+	else if (NodeType.Equals(TEXT("CustomEvent"), ESearchCase::IgnoreCase))
+	{
+		FString EventName = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("event_name")) : TEXT("");
+		Context = EventName;
+		NewNode = CreateCustomEventNode(Graph, EventName, NodeParams, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("ComponentBoundEvent"), ESearchCase::IgnoreCase))
+	{
+		FString ComponentName = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("component")) : TEXT("");
+		FString DelegateName = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("delegate")) : TEXT("");
+		Context = FString::Printf(TEXT("%s_%s"), *ComponentName, *DelegateName);
+		NewNode = CreateComponentBoundEventNode(Graph, Blueprint, ComponentName, DelegateName, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Self"), ESearchCase::IgnoreCase))
+	{
+		Context = TEXT("Self");
+		NewNode = CreateSelfNode(Graph, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("Cast"), ESearchCase::IgnoreCase) || NodeType.Equals(TEXT("DynamicCast"), ESearchCase::IgnoreCase))
+	{
+		FString TargetClass = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("target_class")) : TEXT("");
+		Context = TargetClass;
+		NewNode = CreateCastNode(Graph, TargetClass, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("MakeStruct"), ESearchCase::IgnoreCase))
+	{
+		FString StructType = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("struct_type")) : TEXT("");
+		Context = StructType;
+		NewNode = CreateMakeStructNode(Graph, StructType, PosX, PosY, OutError);
+	}
+	else if (NodeType.Equals(TEXT("BreakStruct"), ESearchCase::IgnoreCase))
+	{
+		FString StructType = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("struct_type")) : TEXT("");
+		Context = StructType;
+		NewNode = CreateBreakStructNode(Graph, StructType, PosX, PosY, OutError);
+	}
 	else if (NodeType.Equals(TEXT("EnhancedInputAction"), ESearchCase::IgnoreCase))
 	{
 		FString ActionPath = NodeParams.IsValid() ? NodeParams->GetStringField(TEXT("action_path")) : TEXT("");
@@ -204,7 +246,7 @@ UEdGraphNode* FBlueprintGraphEditor::CreateNode(
 	}
 	else
 	{
-		OutError = FString::Printf(TEXT("Unknown node type: '%s'. Supported: CallFunction, Branch, Event, EnhancedInputAction, VariableGet, VariableSet, Sequence, Add, Subtract, Multiply, Divide, PrintString, ModifyBone, TwoBoneIK, ControlRig"), *NodeType);
+		OutError = FString::Printf(TEXT("Unknown node type: '%s'. Supported: CallFunction, Branch, Event, CustomEvent, ComponentBoundEvent, EnhancedInputAction, VariableGet, VariableSet, Sequence, Self, Cast, MakeStruct, BreakStruct, Add, Subtract, Multiply, Divide, PrintString, ModifyBone, TwoBoneIK, ControlRig"), *NodeType);
 		return nullptr;
 	}
 
@@ -715,10 +757,25 @@ UEdGraphNode* FBlueprintGraphEditor::CreateCallFunctionNode(
 	// Try to find class by name
 	if (!TargetClass.IsEmpty())
 	{
-		FunctionOwner = FindObject<UClass>(nullptr, *TargetClass);
+		// FindFirstObject (UE 5.1+) replaces deprecated ANY_PACKAGE search, with NativeFirst
+		// to prefer C++ classes over BP-generated when names collide.
+		FunctionOwner = FindFirstObject<UClass>(*TargetClass, EFindFirstObjectOptions::NativeFirst);
+
+		// Retry with engine prefix if user dropped it (e.g. "PrimitiveComponent" -> "UPrimitiveComponent")
+		if (!FunctionOwner && !TargetClass.StartsWith(TEXT("U")) && !TargetClass.StartsWith(TEXT("A")))
+		{
+			const FString WithU = FString(TEXT("U")) + TargetClass;
+			FunctionOwner = FindFirstObject<UClass>(*WithU, EFindFirstObjectOptions::NativeFirst);
+			if (!FunctionOwner)
+			{
+				const FString WithA = FString(TEXT("A")) + TargetClass;
+				FunctionOwner = FindFirstObject<UClass>(*WithA, EFindFirstObjectOptions::NativeFirst);
+			}
+		}
+
 		if (!FunctionOwner)
 		{
-			// Try common library classes
+			// Bare-name fallback for the common kismet libraries (mirrors prior behaviour)
 			if (TargetClass.Equals(TEXT("KismetSystemLibrary"), ESearchCase::IgnoreCase))
 			{
 				FunctionOwner = UKismetSystemLibrary::StaticClass();
@@ -902,9 +959,15 @@ UEdGraphNode* FBlueprintGraphEditor::CreateVariableGetNode(
 		bFound = (Blueprint->ParentClass->FindPropertyByName(VarName) != nullptr);
 	}
 
+	// SCS components (added via add_component) live on the Skeleton class, not ParentClass
+	if (!bFound && Blueprint->SkeletonGeneratedClass)
+	{
+		bFound = (Blueprint->SkeletonGeneratedClass->FindPropertyByName(VarName) != nullptr);
+	}
+
 	if (!bFound)
 	{
-		OutError = FString::Printf(TEXT("Variable '%s' not found in Blueprint or parent class"), *VariableName);
+		OutError = FString::Printf(TEXT("Variable '%s' not found in Blueprint, parent class, or components"), *VariableName);
 		return nullptr;
 	}
 
@@ -1226,4 +1289,275 @@ UEdGraphNode* FBlueprintGraphEditor::CreateControlRigNode(
 	CRNode->ReconstructNode();
 
 	return CRNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateCustomEventNode(
+	UEdGraph* Graph,
+	const FString& EventName,
+	const TSharedPtr<FJsonObject>& Params,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	if (EventName.IsEmpty())
+	{
+		OutError = TEXT("event_name is required for CustomEvent");
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_CustomEvent> NodeCreator(*Graph);
+	UK2Node_CustomEvent* CustomEventNode = NodeCreator.CreateNode();
+	CustomEventNode->CustomFunctionName = FName(*EventName);
+	CustomEventNode->NodePosX = PosX;
+	CustomEventNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	// Optional user-defined input pins from {"inputs":[{"name":"X","type":"float"}, ...]}
+	if (Params.IsValid())
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Inputs = nullptr;
+		if (Params->TryGetArrayField(TEXT("inputs"), Inputs))
+		{
+			for (const TSharedPtr<FJsonValue>& InputVal : *Inputs)
+			{
+				const TSharedPtr<FJsonObject>* InputObj = nullptr;
+				if (!InputVal.IsValid() || !InputVal->TryGetObject(InputObj) || !InputObj) continue;
+
+				const FString InputName = (*InputObj)->GetStringField(TEXT("name"));
+				const FString InputType = (*InputObj)->GetStringField(TEXT("type"));
+				if (InputName.IsEmpty() || InputType.IsEmpty()) continue;
+
+				FEdGraphPinType PinType;
+				if (InputType.Equals(TEXT("bool"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
+				}
+				else if (InputType.Equals(TEXT("int32"), ESearchCase::IgnoreCase) || InputType.Equals(TEXT("int"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Int;
+				}
+				else if (InputType.Equals(TEXT("float"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+					PinType.PinSubCategory = UEdGraphSchema_K2::PC_Float;
+				}
+				else if (InputType.Equals(TEXT("double"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Real;
+					PinType.PinSubCategory = UEdGraphSchema_K2::PC_Double;
+				}
+				else if (InputType.Equals(TEXT("FString"), ESearchCase::IgnoreCase) || InputType.Equals(TEXT("string"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_String;
+				}
+				else if (InputType.Equals(TEXT("FName"), ESearchCase::IgnoreCase) || InputType.Equals(TEXT("name"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Name;
+				}
+				else if (InputType.Equals(TEXT("FVector"), ESearchCase::IgnoreCase) || InputType.Equals(TEXT("Vector"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+					PinType.PinSubCategoryObject = TBaseStructure<FVector>::Get();
+				}
+				else if (InputType.Equals(TEXT("FRotator"), ESearchCase::IgnoreCase) || InputType.Equals(TEXT("Rotator"), ESearchCase::IgnoreCase))
+				{
+					PinType.PinCategory = UEdGraphSchema_K2::PC_Struct;
+					PinType.PinSubCategoryObject = TBaseStructure<FRotator>::Get();
+				}
+				else
+				{
+					UE_LOG(LogUnrealClaude, Warning, TEXT("CustomEvent input '%s': unsupported type '%s', skipping"), *InputName, *InputType);
+					continue;
+				}
+
+				CustomEventNode->CreateUserDefinedPin(FName(*InputName), PinType, EGPD_Output);
+			}
+		}
+	}
+
+	return CustomEventNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateComponentBoundEventNode(
+	UEdGraph* Graph,
+	UBlueprint* Blueprint,
+	const FString& ComponentName,
+	const FString& DelegateName,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	if (ComponentName.IsEmpty())
+	{
+		OutError = TEXT("component is required for ComponentBoundEvent (SCS variable name, e.g. 'Cube')");
+		return nullptr;
+	}
+	if (DelegateName.IsEmpty())
+	{
+		OutError = TEXT("delegate is required for ComponentBoundEvent (e.g. 'OnComponentHit', 'OnComponentBeginOverlap')");
+		return nullptr;
+	}
+
+	UClass* SkeletonClass = Blueprint ? Blueprint->SkeletonGeneratedClass : nullptr;
+	if (!SkeletonClass)
+	{
+		OutError = TEXT("Blueprint has no SkeletonGeneratedClass (try compiling first)");
+		return nullptr;
+	}
+
+	FObjectProperty* CompProp = CastField<FObjectProperty>(SkeletonClass->FindPropertyByName(FName(*ComponentName)));
+	if (!CompProp)
+	{
+		OutError = FString::Printf(TEXT("Component '%s' not found on Blueprint"), *ComponentName);
+		return nullptr;
+	}
+
+	UClass* CompClass = CompProp->PropertyClass;
+	if (!CompClass)
+	{
+		OutError = FString::Printf(TEXT("Component '%s' has no class"), *ComponentName);
+		return nullptr;
+	}
+
+	FMulticastDelegateProperty* DelegateProp = CastField<FMulticastDelegateProperty>(
+		CompClass->FindPropertyByName(FName(*DelegateName))
+	);
+	if (!DelegateProp)
+	{
+		OutError = FString::Printf(TEXT("Delegate '%s' not found on component class '%s'"), *DelegateName, *CompClass->GetName());
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_ComponentBoundEvent> NodeCreator(*Graph);
+	UK2Node_ComponentBoundEvent* EventNode = NodeCreator.CreateNode();
+	EventNode->InitializeComponentBoundEventParams(CompProp, DelegateProp);
+	EventNode->NodePosX = PosX;
+	EventNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return EventNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateSelfNode(
+	UEdGraph* Graph,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	FGraphNodeCreator<UK2Node_Self> NodeCreator(*Graph);
+	UK2Node_Self* SelfNode = NodeCreator.CreateNode();
+	SelfNode->NodePosX = PosX;
+	SelfNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+	return SelfNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateCastNode(
+	UEdGraph* Graph,
+	const FString& TargetClass,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	if (TargetClass.IsEmpty())
+	{
+		OutError = TEXT("target_class is required for Cast (e.g. 'Character', 'StaticMeshActor')");
+		return nullptr;
+	}
+
+	UClass* CastClass = FindFirstObject<UClass>(*TargetClass, EFindFirstObjectOptions::NativeFirst);
+	if (!CastClass && !TargetClass.StartsWith(TEXT("U")) && !TargetClass.StartsWith(TEXT("A")))
+	{
+		const FString WithU = FString(TEXT("U")) + TargetClass;
+		CastClass = FindFirstObject<UClass>(*WithU, EFindFirstObjectOptions::NativeFirst);
+		if (!CastClass)
+		{
+			const FString WithA = FString(TEXT("A")) + TargetClass;
+			CastClass = FindFirstObject<UClass>(*WithA, EFindFirstObjectOptions::NativeFirst);
+		}
+	}
+	if (!CastClass)
+	{
+		OutError = FString::Printf(TEXT("Class '%s' not found for Cast"), *TargetClass);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_DynamicCast> NodeCreator(*Graph);
+	UK2Node_DynamicCast* CastNode = NodeCreator.CreateNode();
+	CastNode->TargetType = CastClass;
+	CastNode->NodePosX = PosX;
+	CastNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return CastNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateMakeStructNode(
+	UEdGraph* Graph,
+	const FString& StructType,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	if (StructType.IsEmpty())
+	{
+		OutError = TEXT("struct_type is required for MakeStruct (e.g. 'Vector', 'LinearColor', 'HitResult')");
+		return nullptr;
+	}
+
+	UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructType, EFindFirstObjectOptions::NativeFirst);
+	if (!Struct && !StructType.StartsWith(TEXT("F")))
+	{
+		const FString WithF = FString(TEXT("F")) + StructType;
+		Struct = FindFirstObject<UScriptStruct>(*WithF, EFindFirstObjectOptions::NativeFirst);
+	}
+	if (!Struct)
+	{
+		OutError = FString::Printf(TEXT("Struct '%s' not found for MakeStruct"), *StructType);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_MakeStruct> NodeCreator(*Graph);
+	UK2Node_MakeStruct* MakeNode = NodeCreator.CreateNode();
+	MakeNode->StructType = Struct;
+	MakeNode->NodePosX = PosX;
+	MakeNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return MakeNode;
+}
+
+UEdGraphNode* FBlueprintGraphEditor::CreateBreakStructNode(
+	UEdGraph* Graph,
+	const FString& StructType,
+	int32 PosX,
+	int32 PosY,
+	FString& OutError)
+{
+	if (StructType.IsEmpty())
+	{
+		OutError = TEXT("struct_type is required for BreakStruct (e.g. 'HitResult', 'Vector', 'Transform')");
+		return nullptr;
+	}
+
+	UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*StructType, EFindFirstObjectOptions::NativeFirst);
+	if (!Struct && !StructType.StartsWith(TEXT("F")))
+	{
+		const FString WithF = FString(TEXT("F")) + StructType;
+		Struct = FindFirstObject<UScriptStruct>(*WithF, EFindFirstObjectOptions::NativeFirst);
+	}
+	if (!Struct)
+	{
+		OutError = FString::Printf(TEXT("Struct '%s' not found for BreakStruct"), *StructType);
+		return nullptr;
+	}
+
+	FGraphNodeCreator<UK2Node_BreakStruct> NodeCreator(*Graph);
+	UK2Node_BreakStruct* BreakNode = NodeCreator.CreateNode();
+	BreakNode->StructType = Struct;
+	BreakNode->NodePosX = PosX;
+	BreakNode->NodePosY = PosY;
+	NodeCreator.Finalize();
+
+	return BreakNode;
 }

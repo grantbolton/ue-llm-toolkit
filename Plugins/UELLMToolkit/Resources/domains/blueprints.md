@@ -106,3 +106,47 @@ Set via `blend_space set_axis`:
 - `max_speed` — hard cap on axis velocity (most impactful single knob)
 - `interp_time` — transition window duration
 - `damping_ratio` — 0.85 = slight springy overshoot (organic), 1.0 = critically damped
+
+## Gameplay BP Authoring (Components, Instance Methods, Hit Events)
+
+The toolkit handles the full SCS-component → instance-method → component-bound-event idiom in `blueprint_modify`. Bouncy-cube example:
+
+```jsonc
+// 1. Create the BP
+{ "operation": "create", "package_path": "/Game/Blueprints", "blueprint_name": "BP_BouncyCube", "parent_class": "Actor" }
+
+// 2. Add an SCS component
+{ "operation": "add_component", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
+  "component_class": "StaticMeshComponent", "component_name": "Cube" }
+
+// 3. Enable physics on the component (recompile happens automatically)
+{ "operation": "set_component_default", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
+  "component_name": "Cube", "property": "BodyInstance.bSimulatePhysics", "value": true }
+
+// 4. Bind to OnComponentHit on the SCS component
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
+  "node_type": "ComponentBoundEvent",
+  "node_params": { "component": "Cube", "delegate": "OnComponentHit" } }
+
+// 5. Reference the SCS component as a graph variable
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
+  "node_type": "VariableGet", "node_params": { "variable": "Cube" } }
+
+// 6. Call AddImpulse on UPrimitiveComponent (any UCLASS now resolves)
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
+  "node_type": "CallFunction",
+  "node_params": { "function": "AddImpulse", "target_class": "PrimitiveComponent" } }
+```
+
+`target_class` accepts bare names (engine `U`/`A` prefix is auto-retried) and any UCLASS in any module — not just `KismetSystemLibrary` / `KismetMathLibrary` / `KismetStringLibrary` / `AnimInstance` / `GameplayStatics`. `VariableGet` sees SCS components added via `add_component` (looks them up on `SkeletonGeneratedClass`).
+
+### Other unlocked node types
+
+| `node_type` | `node_params` | Notes |
+|-----|-----|-----|
+| `CustomEvent` | `event_name`, optional `inputs: [{name, type}]` | Types: bool, int32, float, double, FString, FName, FVector, FRotator |
+| `ComponentBoundEvent` | `component`, `delegate` | e.g. `OnComponentHit`, `OnComponentBeginOverlap`, `OnComponentEndOverlap` |
+| `Self` | — | Reference to the BP instance; wire to `self` pins for instance method calls |
+| `Cast` (or `DynamicCast`) | `target_class` | Bare names work — engine prefix auto-retried |
+| `MakeStruct` | `struct_type` | e.g. `Vector`, `LinearColor`, `HitResult`, `Transform` (`F` prefix auto-retried) |
+| `BreakStruct` | `struct_type` | Same |

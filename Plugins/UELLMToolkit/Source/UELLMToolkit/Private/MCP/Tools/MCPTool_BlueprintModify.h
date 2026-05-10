@@ -61,8 +61,10 @@ public:
 			"Level 7 (Layout): 'layout_graph' - auto-arrange nodes into readable BFS grid layout\n"
 			"Validation: 'compile' - compile single BP with diagnostics, 'compile_all' - batch compile under path\n\n"
 			"Workflow: Use blueprint_query first to understand existing structure, then modify.\n\n"
-			"Node types: CallFunction, Branch, Event, EnhancedInputAction (action_path), VariableGet, VariableSet, Sequence, "
-			"PrintString, Add, Subtract, Multiply, Divide\n\n"
+			"Node types: CallFunction, Branch, Event, CustomEvent (event_name, optional inputs), "
+			"ComponentBoundEvent (component, delegate — e.g. OnComponentHit), EnhancedInputAction (action_path), "
+			"VariableGet (sees SCS component vars), VariableSet, Sequence, Self, Cast (target_class), "
+			"MakeStruct/BreakStruct (struct_type — e.g. Vector, HitResult), PrintString, Add, Subtract, Multiply, Divide\n\n"
 			"Variable types: bool, int32, float, FString, FVector, FRotator, AActor*, UObject*, etc.\n\n"
 			"Returns: Operation result with created node IDs (for subsequent connections).\n\n"
 			"Quick Start:\n"
@@ -107,9 +109,9 @@ public:
 			FMCPToolParameter(TEXT("is_function_graph"), TEXT("boolean"),
 				TEXT("True to target function graphs, false for event graphs"), false, TEXT("false")),
 			FMCPToolParameter(TEXT("node_type"), TEXT("string"),
-				TEXT("Node type: 'CallFunction', 'Branch', 'Event', 'EnhancedInputAction', 'VariableGet', 'VariableSet', 'Sequence', 'PrintString', 'Add', 'Subtract', 'Multiply', 'Divide'"), false),
+				TEXT("Node type: 'CallFunction', 'Branch', 'Event', 'CustomEvent', 'ComponentBoundEvent', 'EnhancedInputAction', 'VariableGet', 'VariableSet', 'Sequence', 'Self', 'Cast', 'MakeStruct', 'BreakStruct', 'PrintString', 'Add', 'Subtract', 'Multiply', 'Divide'"), false),
 			FMCPToolParameter(TEXT("node_params"), TEXT("object"),
-				TEXT("Node parameters: {function, target_class, event, variable, num_outputs, action_path}"), false),
+				TEXT("Node parameters: {function, target_class, event, event_name, inputs, component, delegate, variable, num_outputs, action_path, struct_type}"), false),
 			FMCPToolParameter(TEXT("pos_x"), TEXT("number"),
 				TEXT("Node X position"), false, TEXT("0")),
 			FMCPToolParameter(TEXT("pos_y"), TEXT("number"),

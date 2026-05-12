@@ -23,6 +23,50 @@ Full graph dumps (`get_event_graph`, `get_anim_graph`) waste tokens on large BPs
 
 All work on both K2 (EventGraph) and AnimGraph nodes, including state-bound sub-graphs (`graph_type: "StateGraph"`).
 
+## Gameplay BP Authoring
+
+`blueprint_modify` handles the full SCS-component → instance-method → component-bound-event idiom end-to-end. Pattern (creating a physics actor that pushes itself on hit):
+
+```jsonc
+// 1. Create the BP
+{ "operation": "create", "package_path": "/Game/Blueprints", "blueprint_name": "BP_PhysicsActor", "parent_class": "Actor" }
+
+// 2. Add an SCS component
+{ "operation": "add_component", "blueprint_path": "/Game/Blueprints/BP_PhysicsActor",
+  "component_class": "StaticMeshComponent", "component_name": "Mesh" }
+
+// 3. Enable physics on the component (recompile happens automatically)
+{ "operation": "set_component_default", "blueprint_path": "/Game/Blueprints/BP_PhysicsActor",
+  "component_name": "Mesh", "property": "BodyInstance.bSimulatePhysics", "value": true }
+
+// 4. Bind to OnComponentHit on the SCS component
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_PhysicsActor",
+  "node_type": "ComponentBoundEvent",
+  "node_params": { "component": "Mesh", "delegate": "OnComponentHit" } }
+
+// 5. Reference the SCS component as a graph variable
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_PhysicsActor",
+  "node_type": "VariableGet", "node_params": { "variable": "Mesh" } }
+
+// 6. Call an instance method (AddImpulse on UPrimitiveComponent)
+{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_PhysicsActor",
+  "node_type": "CallFunction",
+  "node_params": { "function": "AddImpulse", "target_class": "PrimitiveComponent" } }
+```
+
+`target_class` accepts bare names (engine `U`/`A` prefix auto-retried) and any UCLASS in any module — not just `KismetSystemLibrary` / `KismetMathLibrary` / `KismetStringLibrary` / `AnimInstance` / `GameplayStatics`. `VariableGet` sees SCS components added via `add_component` (looks them up on `SkeletonGeneratedClass`).
+
+### Node-type reference
+
+| `node_type` | `node_params` | Notes |
+|-----|-----|-----|
+| `CustomEvent` | `event_name`, optional `inputs: [{name, type}]` | Input types: bool, int32, float, double, FString, FName, FVector, FRotator |
+| `ComponentBoundEvent` | `component`, `delegate` | e.g. `OnComponentHit`, `OnComponentBeginOverlap`, `OnComponentEndOverlap` |
+| `Self` | — | Reference to the BP instance; wire to `self` pins for instance method calls |
+| `Cast` (alias `DynamicCast`) | `target_class` | Bare names work — engine prefix auto-retried |
+| `MakeStruct` | `struct_type` | e.g. `Vector`, `LinearColor`, `HitResult`, `Transform` (`F` prefix auto-retried) |
+| `BreakStruct` | `struct_type` | Same |
+
 ## State-Bound Graphs
 
 Nodes inside state machine states require `state_machine` + `state_name` parameters on:
@@ -92,9 +136,6 @@ Blueprint class paths (for `spawn_actor`, `parent_class`, etc.) need the `_C` su
 ```
 Asset paths (for `blueprint_query`, `asset` operations) do NOT use `_C`.
 
-### Transition Duration Workaround
-`add_transition` always creates with 0.2s duration regardless of params. After creating all transitions, call `set_transition_duration` separately for each one.
-
 ### Layer Interface Notes
 - `add_layer_interface` adds existing ALIs. No `create_layer_interface` yet.
 - After `add_layer_interface`, AnimBP generated class is stale — recompile before `list_layers`.
@@ -106,47 +147,3 @@ Set via `blend_space set_axis`:
 - `max_speed` — hard cap on axis velocity (most impactful single knob)
 - `interp_time` — transition window duration
 - `damping_ratio` — 0.85 = slight springy overshoot (organic), 1.0 = critically damped
-
-## Gameplay BP Authoring (Components, Instance Methods, Hit Events)
-
-The toolkit handles the full SCS-component → instance-method → component-bound-event idiom in `blueprint_modify`. Bouncy-cube example:
-
-```jsonc
-// 1. Create the BP
-{ "operation": "create", "package_path": "/Game/Blueprints", "blueprint_name": "BP_BouncyCube", "parent_class": "Actor" }
-
-// 2. Add an SCS component
-{ "operation": "add_component", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
-  "component_class": "StaticMeshComponent", "component_name": "Cube" }
-
-// 3. Enable physics on the component (recompile happens automatically)
-{ "operation": "set_component_default", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
-  "component_name": "Cube", "property": "BodyInstance.bSimulatePhysics", "value": true }
-
-// 4. Bind to OnComponentHit on the SCS component
-{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
-  "node_type": "ComponentBoundEvent",
-  "node_params": { "component": "Cube", "delegate": "OnComponentHit" } }
-
-// 5. Reference the SCS component as a graph variable
-{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
-  "node_type": "VariableGet", "node_params": { "variable": "Cube" } }
-
-// 6. Call AddImpulse on UPrimitiveComponent (any UCLASS now resolves)
-{ "operation": "add_node", "blueprint_path": "/Game/Blueprints/BP_BouncyCube",
-  "node_type": "CallFunction",
-  "node_params": { "function": "AddImpulse", "target_class": "PrimitiveComponent" } }
-```
-
-`target_class` accepts bare names (engine `U`/`A` prefix is auto-retried) and any UCLASS in any module — not just `KismetSystemLibrary` / `KismetMathLibrary` / `KismetStringLibrary` / `AnimInstance` / `GameplayStatics`. `VariableGet` sees SCS components added via `add_component` (looks them up on `SkeletonGeneratedClass`).
-
-### Other unlocked node types
-
-| `node_type` | `node_params` | Notes |
-|-----|-----|-----|
-| `CustomEvent` | `event_name`, optional `inputs: [{name, type}]` | Types: bool, int32, float, double, FString, FName, FVector, FRotator |
-| `ComponentBoundEvent` | `component`, `delegate` | e.g. `OnComponentHit`, `OnComponentBeginOverlap`, `OnComponentEndOverlap` |
-| `Self` | — | Reference to the BP instance; wire to `self` pins for instance method calls |
-| `Cast` (or `DynamicCast`) | `target_class` | Bare names work — engine prefix auto-retried |
-| `MakeStruct` | `struct_type` | e.g. `Vector`, `LinearColor`, `HitResult`, `Transform` (`F` prefix auto-retried) |
-| `BreakStruct` | `struct_type` | Same |
